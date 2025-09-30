@@ -20,7 +20,7 @@ uv pip install -e /path/to/scribe/repo
 ## Usage  
 Once installed, you can run the `scribe` command from within your virtual environment.  
 
-This command will a CLI agent (the default is Claude Code, but you can update `DEFAULT_PROVIDER` in [constants.py](scribe/cli/constants.py)) with a notebook MCP server automatically enabled. Behind the scenes, a Jupyter server has been started and the agent has tools to run code that will be executed in an IPython kernel. The scribe server sits in between the agent and the Jupyter kernel, passing input code to the kernel and automatically writing all input code + kernel outputs (text, errors, images, etc.) to a Jupyter notebook.  
+This command will launch a CLI agent (the default is Claude Code, but you can update `DEFAULT_PROVIDER` in [constants.py](scribe/cli/constants.py)) with a notebook MCP server automatically enabled. Behind the scenes, a Jupyter server has been started and the agent has tools to run code that will be executed in an IPython kernel. The scribe server sits in between the agent and the Jupyter kernel, passing input code to the kernel and automatically writing all input code + kernel outputs (text, errors, images, etc.) to a Jupyter notebook.  
 
 To specify a particular CLI agent, use `scribe claude`, `scribe codex`, or `scribe gemini`. These commands wrap calls to the underlying CLI agents — they will use your default auth method and other configurations, and you can pass CLI flags (e.g. `scribe claude -c` to continue a session).    
 
@@ -46,4 +46,4 @@ When running `scribe codex`, Codex is launched with a command-line argument that
 When running `scribe gemini`, a `.gemini/settings.json` file is created (or updated if one already exists) with settings prepopulated to enable the MCP server with tool calls automatically enabled.  
 
 ## Security Note  
-Agents can execute code via the Jupyter kernel that bypass default CLI permissions. Use with caution.  
+Agents can execute code via the Jupyter kernel that bypasses default CLI permissions. Use with caution.  
