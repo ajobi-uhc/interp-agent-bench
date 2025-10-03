@@ -116,9 +116,11 @@ class TechniqueSession:
         self.registry = TechniqueRegistry(root)
 
     def list(self) -> Dict[str, str]:
+        self.registry.refresh()
         return self.registry.list()
 
     def call(self, name: str, *args: Any, **kwargs: Any) -> Any:
+        self.registry.refresh()
         descriptor = self.registry.get(name)
         return descriptor.run(*args, **kwargs)
 
