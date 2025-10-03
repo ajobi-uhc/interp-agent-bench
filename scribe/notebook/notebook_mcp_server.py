@@ -23,10 +23,13 @@ from scribe.notebook._notebook_server_utils import (
     cleanup_scribe_server,
     process_jupyter_outputs,
 )  # noqa: E402
+from scribe.notebook.technique_manager import TechniqueManager
 
 
 # Initialize MCP server
 mcp = FastMCP("scribe")
+
+_technique_manager = TechniqueManager()
 
 # Global server management
 _server_process: Optional[subprocess.Popen] = None
@@ -509,6 +512,27 @@ async def edit_cell(
 
     except requests.exceptions.RequestException as e:
         raise Exception(f"Failed to edit cell: {str(e)}")
+
+
+@mcp.tool
+async def init_session() -> Dict[str, Any]:
+    """Return protocol instructions and the current technique catalogue."""
+
+    return _technique_manager.init_payload()
+
+
+@mcp.tool
+async def list_techniques() -> Dict[str, Dict[str, Any]]:
+    """List available notebook techniques."""
+
+    return _technique_manager.list_payload()
+
+
+@mcp.tool
+async def describe_technique(technique_name: str) -> Dict[str, Any]:
+    """Return documentation and call snippet for ``technique_name``."""
+
+    return _technique_manager.describe_payload(technique_name)
 
 
 @mcp.tool
