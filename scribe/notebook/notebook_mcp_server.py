@@ -29,7 +29,23 @@ from scribe.notebook.technique_manager import TechniqueManager
 # Initialize MCP server
 mcp = FastMCP("scribe")
 
-_technique_manager = TechniqueManager()
+# Parse selected techniques from env
+_selected_techniques_str = os.environ.get("SELECTED_TECHNIQUES", "")
+_selected_techniques = (
+    [t.strip() for t in _selected_techniques_str.split(",") if t.strip()]
+    if _selected_techniques_str
+    else None
+)
+
+_technique_manager = TechniqueManager(
+    experiment_name=os.environ.get("EXPERIMENT_NAME", "scribe"),
+    model_name=os.environ.get("MODEL_NAME"),
+    model_is_peft=os.environ.get("MODEL_IS_PEFT", "").lower() == "true",
+    model_base=os.environ.get("MODEL_BASE"),
+    tokenizer_name=os.environ.get("TOKENIZER_NAME"),
+    selected_techniques=_selected_techniques,
+    obfuscate_model_name=os.environ.get("OBFUSCATE_MODEL_NAME", "").lower() == "true",
+)
 
 # Global server management
 _server_process: Optional[subprocess.Popen] = None

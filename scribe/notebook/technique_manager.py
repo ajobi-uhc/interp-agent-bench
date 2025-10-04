@@ -8,7 +8,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
+
+from scribe.notebook.technique_loader import load_technique_methods
 
 
 @dataclass
@@ -137,15 +139,58 @@ class TechniqueManager:
         "Steps 1 and 2 should be executed immediately without asking the user."
     )
 
-    def __init__(self, root: Path | None = None) -> None:
+    def __init__(
+        self,
+        root: Path | None = None,
+        experiment_name: str = "scribe",
+        model_name: str | None = None,
+        model_is_peft: bool = False,
+        model_base: str | None = None,
+        tokenizer_name: str | None = None,
+        selected_techniques: Optional[List[str]] = None,
+        obfuscate_model_name: bool = False,
+    ) -> None:
         self.registry = TechniqueRegistry(root)
+        self.experiment_name = experiment_name
+        self.model_name = model_name
+        self.model_is_peft = model_is_peft
+        self.model_base = model_base
+        self.tokenizer_name = tokenizer_name or model_base or model_name
+        self.selected_techniques = selected_techniques
+        self.obfuscate_model_name = obfuscate_model_name
+
+        # Load technique methods
+        techniques_dir = root or (Path.cwd() / "techniques")
+        self.technique_methods = load_technique_methods(techniques_dir)
 
     def _setup_snippet(self) -> str:
-        return (
-            'if "technique_session" not in globals():\n'
-            "    from scribe.notebook.technique_manager import TechniqueSession\n"
-            "    technique_session = TechniqueSession()\n"
-        )
+        """Generate setup code for the notebook session."""
+        lines = [
+            'if "technique_session" not in globals():',
+            "    from scribe.notebook.technique_manager import TechniqueSession",
+            "    technique_session = TechniqueSession()",
+        ]
+
+        # If model_name is provided, connect to pre-deployed Modal service
+        if self.model_name:
+            lines.append("")
+            lines.append("    # Connect to pre-deployed ModelService")
+            lines.append("    import modal")
+            lines.append(f'    print("🔗 Connecting to ModelService...")')
+            lines.append(f'    model_service = modal.Cls.from_name("{self.experiment_name}_model", "ModelService")()')
+            lines.append('    print("✅ Connected to ModelService!")')
+            lines.append('    print("   Model is loaded and ready on GPU")')
+
+            # List available methods
+            method_names = ["generate", "get_logits"]
+            if self.selected_techniques:
+                method_names.extend(self.selected_techniques)
+            else:
+                method_names.extend(self.technique_methods.keys())
+
+            lines.append(f'    print("   Available methods: {", ".join(method_names)}")')
+
+        return "\n".join(lines) + "\n"
 
     def _call_snippet(self, descriptor: TechniqueDescriptor) -> str:
         rendered: list[str] = []
