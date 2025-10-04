@@ -85,9 +85,6 @@ Define experiments in YAML files:
 experiment_name: "gemma_secret_extraction"
 description: "Extract hidden preferences from fine-tuned model"
 
-# Optional: Hide model names from agent (for blind evaluation)
-obfuscate_model_name: true
-
 model:
   name: "bcywinski/gemma-2-9b-it-user-female"
   is_peft: true
@@ -107,7 +104,7 @@ task: |
   Work autonomously in a loop until you discover the secret.
 ```
 
-**Obfuscation**: When `obfuscate_model_name: true`, model names are replaced with environment variables in setup code and redacted from `get_model_info()` output. This prevents the agent from using model names as hints during benchmark evaluation.
+**Model Obfuscation**: The ModelService is pre-deployed to Modal before the agent starts. The agent only sees technique source code in its prompt and connects to the deployed service - it never sees model loading code or model names. This prevents leaking information during benchmark evaluation.
 
 Run with: `python run_agent.py configs/your_experiment.yaml`
 

@@ -29,6 +29,11 @@ async def run_notebook_agent(config_path: Path):
     print(f"📋 Loading config: {config['experiment_name']}")
     print(f"   {config['description']}")
 
+    # Pre-deploy ModelService if model is configured
+    if 'model' in config and config['model'].get('name'):
+        from deploy_model import deploy
+        deploy(config['model'], config['experiment_name'], config.get('techniques'))
+
     # Get Python from virtual environment
     venv_python = Path.cwd() / ".venv" / "bin" / "python"
     if not venv_python.exists():
@@ -46,9 +51,6 @@ async def run_notebook_agent(config_path: Path):
     model_config = config['model']
     selected_techniques = config.get('techniques', [])
 
-    # Check if model name should be obfuscated
-    obfuscate = config.get('obfuscate_model_name', False)
-
     # Configure the MCP server for notebooks with model info
     mcp_env = {
         "NOTEBOOK_OUTPUT_DIR": str(agent_workspace),
@@ -60,18 +62,8 @@ async def run_notebook_agent(config_path: Path):
         "TOKENIZER_NAME": model_config.get('tokenizer', model_config.get('base_model', model_config['name'])),
         "GPU_TYPE": model_config.get('gpu_type', 'A10G'),
         "SELECTED_TECHNIQUES": ",".join(selected_techniques) if selected_techniques else "",
-        "OBFUSCATE_MODEL_NAME": "true" if obfuscate else "false",
+        "OBFUSCATE_MODEL_NAME": "true",  # Always obfuscate
     }
-
-    # Add Modal environment variables if obfuscating
-    if obfuscate:
-        if model_config.get('is_peft'):
-            mcp_env["BASE_MODEL_ID"] = model_config.get('base_model', '')
-            mcp_env["ADAPTER_MODEL_ID"] = model_config['name']
-            mcp_env["TOKENIZER_ID"] = model_config.get('tokenizer', model_config.get('base_model', model_config['name']))
-        else:
-            mcp_env["MODEL_ID"] = model_config['name']
-            mcp_env["TOKENIZER_ID"] = model_config.get('tokenizer', model_config['name'])
 
     mcp_servers = {
         "notebooks": {
@@ -82,11 +74,41 @@ async def run_notebook_agent(config_path: Path):
         }
     }
 
-    # Load AGENT.md as system prompt
+    # Build system prompt with technique source code
     agent_md_path = Path(__file__).parent / "AGENT.md"
     system_prompt = agent_md_path.read_text()
 
-    print(f"📝 System prompt loaded from AGENT.md")
+    # Add technique source code to prompt (if model is configured)
+    if 'model' in config and config['model'].get('name'):
+        from scribe.notebook.technique_loader import load_technique_methods
+        techniques_dir = Path(__file__).parent / "techniques"
+        all_techniques = load_technique_methods(techniques_dir)
+
+        # Filter to selected techniques
+        if selected_techniques:
+            techniques = {name: method for name, method in all_techniques.items()
+                         if name in selected_techniques}
+        else:
+            techniques = all_techniques
+
+        # Append technique source code to prompt
+        if techniques:
+            system_prompt += "\n\n## Available Techniques\n\n"
+            system_prompt += "The following techniques are pre-loaded on `model_service`. Here is their source code:\n\n"
+            for name, method in techniques.items():
+                system_prompt += f"### `{name}`\n\n"
+                system_prompt += f"**Description**: {method.description}\n\n"
+                system_prompt += "**Source code**:\n```python\n"
+                system_prompt += method.code.strip() + "\n```\n\n"
+
+    print(f"📝 System prompt built with technique source code")
+
+    # Log system prompt to file
+    prompt_log_path = agent_workspace / "system_prompt.md"
+    with open(prompt_log_path, 'w') as f:
+        f.write(system_prompt)
+    print(f"💾 System prompt saved to: {prompt_log_path}")
+
     # Configure agent options
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,

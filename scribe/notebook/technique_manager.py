@@ -171,148 +171,15 @@ class TechniqueManager:
             "    technique_session = TechniqueSession()",
         ]
 
-        # If model_name is provided, set up Modal with ModelService
+        # If model_name is provided, connect to pre-deployed Modal service
         if self.model_name:
             lines.append("")
-            lines.append("    # Setup Modal for GPU access")
+            lines.append("    # Connect to pre-deployed ModelService")
             lines.append("    import modal")
-            lines.append("    from scribe.modal import hf_image")
-            lines.append("")
-            lines.append(f'    app = modal.App(name="{self.experiment_name}_model")')
-            lines.append("")
-            lines.append("    # Create ModelService class with pre-configured techniques")
-            lines.append('    @app.cls(')
-            lines.append('        gpu="A10G",')
-            lines.append('        image=hf_image,')
-            lines.append('        secrets=[modal.Secret.from_name("huggingface-secret")],')
-            lines.append('    )')
-            lines.append('    class ModelService:')
-            lines.append('        """Persistent model service with pre-configured techniques."""')
-            lines.append('')
-            lines.append('        @modal.enter()')
-            lines.append('        def load_model(self):')
-            lines.append('            """Load model once when container starts."""')
-            lines.append('            from transformers import AutoModelForCausalLM, AutoTokenizer')
-            lines.append('            import torch')
-            lines.append('')
-
-            # Define model IDs before the class if obfuscating
-            if self.obfuscate_model_name:
-                if self.model_is_peft:
-                    lines.append(f'    _base_model_id = "{self.model_base}"')
-                    lines.append(f'    _adapter_id = "{self.model_name}"')
-                    lines.append(f'    _tokenizer_id = "{self.tokenizer_name}"')
-                else:
-                    lines.append(f'    _model_id = "{self.model_name}"')
-                    lines.append(f'    _tokenizer_id = "{self.tokenizer_name}"')
-                lines.append('')
-
-            if self.model_is_peft:
-                lines.append('            from peft import PeftModel')
-                lines.append('')
-
-                if self.obfuscate_model_name:
-                    lines.append('            print("Loading base model...")')
-                    lines.append('            self.model = AutoModelForCausalLM.from_pretrained(')
-                    lines.append('                _base_model_id,')
-                    lines.append('                device_map="auto",')
-                    lines.append('                torch_dtype=torch.float16,')
-                    lines.append('            )')
-                    lines.append('')
-                    lines.append('            print("Loading PEFT adapter...")')
-                    lines.append('            self.model = PeftModel.from_pretrained(self.model, _adapter_id)')
-                    lines.append('            print("Loading tokenizer...")')
-                    lines.append('            self.tokenizer = AutoTokenizer.from_pretrained(_tokenizer_id)')
-                else:
-                    lines.append(f'            print(f"Loading base model: {self.model_base}")')
-                    lines.append(f'            self.model = AutoModelForCausalLM.from_pretrained(')
-                    lines.append(f'                "{self.model_base}",')
-                    lines.append(f'                device_map="auto",')
-                    lines.append(f'                torch_dtype=torch.float16,')
-                    lines.append(f'            )')
-                    lines.append('')
-                    lines.append(f'            print(f"Loading PEFT adapter: {self.model_name}")')
-                    lines.append(f'            self.model = PeftModel.from_pretrained(self.model, "{self.model_name}")')
-                    lines.append(f'            print(f"Loading tokenizer: {self.tokenizer_name}")')
-                    lines.append(f'            self.tokenizer = AutoTokenizer.from_pretrained("{self.tokenizer_name}")')
-            else:
-                if self.obfuscate_model_name:
-                    lines.append('            print("Loading model...")')
-                    lines.append('            self.model = AutoModelForCausalLM.from_pretrained(')
-                    lines.append('                _model_id,')
-                    lines.append('                device_map="auto",')
-                    lines.append('                torch_dtype=torch.float16,')
-                    lines.append('            )')
-                    lines.append('            print("Loading tokenizer...")')
-                    lines.append('            self.tokenizer = AutoTokenizer.from_pretrained(_tokenizer_id)')
-                else:
-                    lines.append(f'            print(f"Loading model: {self.model_name}")')
-                    lines.append(f'            self.model = AutoModelForCausalLM.from_pretrained(')
-                    lines.append(f'                "{self.model_name}",')
-                    lines.append(f'                device_map="auto",')
-                    lines.append(f'                torch_dtype=torch.float16,')
-                    lines.append(f'            )')
-                    lines.append(f'            print(f"Loading tokenizer: {self.tokenizer_name}")')
-                    lines.append(f'            self.tokenizer = AutoTokenizer.from_pretrained("{self.tokenizer_name}")')
-
-            lines.append('            print(f"✓ Model loaded on {self.model.device}")')
-            lines.append('')
-
-            # Add base methods
-            lines.append('        @modal.method()')
-            lines.append('        def generate(self, prompt: str, max_length: int = 50) -> str:')
-            lines.append('            """Generate text from prompt."""')
-            lines.append('            import torch')
-            lines.append('            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)')
-            lines.append('            outputs = self.model.generate(')
-            lines.append('                **inputs,')
-            lines.append('                max_length=max_length,')
-            lines.append('                pad_token_id=self.tokenizer.eos_token_id,')
-            lines.append('            )')
-            lines.append('            return self.tokenizer.decode(outputs[0], skip_special_tokens=True)')
-            lines.append('')
-            lines.append('        @modal.method()')
-            lines.append('        def get_logits(self, prompt: str):')
-            lines.append('            """Get logits for the next token."""')
-            lines.append('            import torch')
-            lines.append('            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)')
-            lines.append('            with torch.no_grad():')
-            lines.append('                outputs = self.model(**inputs)')
-            lines.append('                logits = outputs.logits[0, -1, :]')
-            lines.append('                probs = torch.softmax(logits, dim=-1)')
-            lines.append('            top_probs, top_indices = torch.topk(probs, 10)')
-            lines.append('            return {')
-            lines.append('                "logits": logits.cpu().tolist(),')
-            lines.append('                "top_tokens": [')
-            lines.append('                    {')
-            lines.append('                        "token": self.tokenizer.decode([idx]),')
-            lines.append('                        "token_id": idx.item(),')
-            lines.append('                        "probability": prob.item(),')
-            lines.append('                    }')
-            lines.append('                    for idx, prob in zip(top_indices, top_probs)')
-            lines.append('                ],')
-            lines.append('            }')
-
-            # Inject technique methods
-            for method in self.technique_methods.values():
-                # Filter if selected_techniques is specified
-                if self.selected_techniques and method.name not in self.selected_techniques:
-                    continue
-
-                lines.append('')
-                for line in method.code.split('\n'):
-                    lines.append(line)
-
-            lines.append("")
-            lines.append("    # Deploy app to Modal for persistent service")
-            lines.append(f'    print("🚀 Deploying ModelService to Modal...")')
-            lines.append(f'    app.deploy(name="{self.experiment_name}_model")')
-            lines.append('')
-            lines.append("    # Get reference to deployed service")
-            lines.append(f'    ModelServiceDeployed = modal.Cls.from_name("{self.experiment_name}_model", "ModelService")')
-            lines.append("    model_service = ModelServiceDeployed()")
-            lines.append('    print("✅ ModelService deployed and ready!")')
-            lines.append('    print("   Model will load on first method call and stay in memory")')
+            lines.append(f'    print("🔗 Connecting to ModelService...")')
+            lines.append(f'    model_service = modal.Cls.from_name("{self.experiment_name}_model", "ModelService")()')
+            lines.append('    print("✅ Connected to ModelService!")')
+            lines.append('    print("   Model is loaded and ready on GPU")')
 
             # List available methods
             method_names = ["generate", "get_logits"]
