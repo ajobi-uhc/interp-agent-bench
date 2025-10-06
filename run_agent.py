@@ -16,9 +16,31 @@ from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 
 def load_config(config_path: Path) -> dict:
-    """Load experiment configuration from YAML file."""
+    """Load experiment configuration from YAML file.
+
+    Supports loading hidden system prompts from external files for security.
+    """
     with open(config_path) as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+
+    # Load hidden system prompt from external file if specified
+    model_config = config.get('model', {})
+    if 'hidden_system_prompt_file' in model_config:
+        prompt_file = Path(model_config['hidden_system_prompt_file'])
+
+        # Support relative paths from config directory
+        if not prompt_file.is_absolute():
+            prompt_file = config_path.parent / prompt_file
+
+        if prompt_file.exists():
+            config['model']['hidden_system_prompt'] = prompt_file.read_text().strip()
+            print(f"🔒 Loaded hidden system prompt from: {prompt_file}")
+            # Remove file reference to keep it hidden
+            del config['model']['hidden_system_prompt_file']
+        else:
+            print(f"⚠️  Warning: Hidden prompt file not found: {prompt_file}")
+
+    return config
 
 
 async def run_notebook_agent(config_path: Path):
@@ -29,10 +51,21 @@ async def run_notebook_agent(config_path: Path):
     print(f"📋 Loading config: {config['experiment_name']}")
     print(f"   {config['description']}")
 
-    # Pre-deploy ModelService if model is configured
-    if 'model' in config and config['model'].get('name'):
-        from deploy_model import deploy
-        deploy(config['model'], config['experiment_name'], config.get('techniques'))
+    # Extract model configuration
+    model_config = config.get('model', {})
+    execution_mode = model_config.get('execution_mode', 'modal')
+
+    # Pre-deploy ModelService if model is configured and using Modal
+    if 'model' in config and model_config.get('name'):
+        if execution_mode == 'modal':
+            from deploy_model import deploy
+            print(f"🚀 Deploying model to Modal GPU...")
+            deploy(model_config, config['experiment_name'], config.get('techniques'))
+        elif execution_mode == 'local':
+            print(f"🔧 Local execution mode - skipping Modal deployment")
+        else:
+            print(f"❌ Error: Invalid execution_mode '{execution_mode}'. Must be 'modal' or 'local'")
+            sys.exit(1)
 
     # Get Python from virtual environment
     venv_python = Path.cwd() / ".venv" / "bin" / "python"
@@ -47,8 +80,7 @@ async def run_notebook_agent(config_path: Path):
     agent_workspace = Path.cwd() / "notebooks" / f"{config['experiment_name']}_{timestamp}"
     agent_workspace.mkdir(parents=True, exist_ok=True)
 
-    # Extract model configuration
-    model_config = config['model']
+    # Use model_config from earlier
     selected_techniques = config.get('techniques', [])
 
     # Configure the MCP server for notebooks with model info
@@ -63,6 +95,9 @@ async def run_notebook_agent(config_path: Path):
         "GPU_TYPE": model_config.get('gpu_type', 'A10G'),
         "SELECTED_TECHNIQUES": ",".join(selected_techniques) if selected_techniques else "",
         "OBFUSCATE_MODEL_NAME": "true",  # Always obfuscate
+        "EXECUTION_MODE": execution_mode,
+        "DEVICE": model_config.get('device', 'auto'),
+        "HIDDEN_SYSTEM_PROMPT": model_config.get('hidden_system_prompt', ''),
     }
 
     mcp_servers = {

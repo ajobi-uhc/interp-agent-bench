@@ -45,6 +45,9 @@ _technique_manager = TechniqueManager(
     tokenizer_name=os.environ.get("TOKENIZER_NAME"),
     selected_techniques=_selected_techniques,
     obfuscate_model_name=os.environ.get("OBFUSCATE_MODEL_NAME", "").lower() == "true",
+    execution_mode=os.environ.get("EXECUTION_MODE", "modal"),
+    device=os.environ.get("DEVICE", "auto"),
+    hidden_system_prompt=os.environ.get("HIDDEN_SYSTEM_PROMPT", ""),
 )
 
 # Global server management

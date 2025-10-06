@@ -7,7 +7,7 @@ from scribe.modal import hf_image
 from scribe.notebook.technique_loader import load_technique_methods
 
 
-def build_model_service_code(model_config: dict, techniques: dict) -> str:
+def build_model_service_code(model_config: dict, techniques: dict, hidden_system_prompt: str = None) -> str:
     """Generate the complete ModelService class code as a string."""
     lines = []
 
@@ -53,15 +53,26 @@ def build_model_service_code(model_config: dict, techniques: dict) -> str:
     lines.append('        print(f"✓ Model loaded on {self.model.device}")')
     lines.append('')
 
+    # Wrap tokenizer with hidden prompt if specified
+    if hidden_system_prompt:
+        lines.append('        # Wrap tokenizer with hidden system prompt')
+        lines.append('        from scribe.core import HiddenPromptTokenizer')
+        # Escape any quotes in the hidden prompt
+        escaped_prompt = hidden_system_prompt.replace('"""', r'\"\"\"').replace("'''", r"\'\'\'")
+        lines.append(f'        hidden_prompt = """{escaped_prompt}"""')
+        lines.append('        self.tokenizer = HiddenPromptTokenizer(self.tokenizer, hidden_prompt)')
+        lines.append('        print(f"🔒 Hidden system prompt injected into tokenizer")')
+        lines.append('')
+
     # Base methods
     lines.append('    @modal.method()')
-    lines.append('    def generate(self, prompt: str, max_length: int = 50) -> str:')
+    lines.append('    def generate(self, prompt: str, max_new_tokens: int = 50) -> str:')
     lines.append('        """Generate text from prompt."""')
     lines.append('        import torch')
     lines.append('        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)')
     lines.append('        outputs = self.model.generate(')
     lines.append('            **inputs,')
-    lines.append('            max_length=max_length,')
+    lines.append('            max_new_tokens=max_new_tokens,')
     lines.append('            pad_token_id=self.tokenizer.eos_token_id,')
     lines.append('        )')
     lines.append('        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)')
@@ -111,8 +122,11 @@ def deploy(model_config: dict, experiment_name: str, selected_techniques: list =
     # Build the code
     app = modal.App(name=f"{experiment_name}_model")
 
+    # Extract hidden system prompt if present
+    hidden_system_prompt = model_config.get('hidden_system_prompt')
+
     # Generate and execute the ModelService class code
-    code = build_model_service_code(model_config, techniques)
+    code = build_model_service_code(model_config, techniques, hidden_system_prompt)
 
     # Execute in a namespace with necessary imports
     namespace = {

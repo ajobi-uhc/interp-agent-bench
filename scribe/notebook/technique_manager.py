@@ -149,6 +149,9 @@ class TechniqueManager:
         tokenizer_name: str | None = None,
         selected_techniques: Optional[List[str]] = None,
         obfuscate_model_name: bool = False,
+        execution_mode: str = "modal",
+        device: str = "auto",
+        hidden_system_prompt: str = "",
     ) -> None:
         self.registry = TechniqueRegistry(root)
         self.experiment_name = experiment_name
@@ -158,6 +161,9 @@ class TechniqueManager:
         self.tokenizer_name = tokenizer_name or model_base or model_name
         self.selected_techniques = selected_techniques
         self.obfuscate_model_name = obfuscate_model_name
+        self.execution_mode = execution_mode
+        self.device = device
+        self.hidden_system_prompt = hidden_system_prompt
 
         # Load technique methods
         techniques_dir = root or (Path.cwd() / "techniques")
@@ -171,15 +177,54 @@ class TechniqueManager:
             "    technique_session = TechniqueSession()",
         ]
 
-        # If model_name is provided, connect to pre-deployed Modal service
+        # If model_name is provided, set up model service (Modal or Local)
         if self.model_name:
             lines.append("")
-            lines.append("    # Connect to pre-deployed ModelService")
-            lines.append("    import modal")
-            lines.append(f'    print("🔗 Connecting to ModelService...")')
-            lines.append(f'    model_service = modal.Cls.from_name("{self.experiment_name}_model", "ModelService")()')
-            lines.append('    print("✅ Connected to ModelService!")')
-            lines.append('    print("   Model is loaded and ready on GPU")')
+
+            if self.execution_mode == "local":
+                # Local execution mode
+                lines.append("    # Initialize local ModelService")
+                lines.append("    from scribe.local import LocalModelService")
+                lines.append("    from pathlib import Path")
+                lines.append("    import os")
+                lines.append("")
+                # Read and immediately delete hidden prompt from environment (if present)
+                if self.hidden_system_prompt:
+                    lines.append("    # Read hidden configuration from environment (auto-deleted after reading)")
+                    lines.append('    _hidden_prompt = os.environ.pop("HIDDEN_SYSTEM_PROMPT", "")')
+                    lines.append("")
+                lines.append(f'    print("🔧 Initializing local model service...")')
+                lines.append("    model_service = LocalModelService(")
+                lines.append(f'        model_name="{self.model_name}",')
+                lines.append(f'        device="{self.device}",')
+                lines.append(f'        is_peft={self.model_is_peft},')
+                if self.model_base:
+                    lines.append(f'        base_model="{self.model_base}",')
+                if self.tokenizer_name:
+                    lines.append(f'        tokenizer_name="{self.tokenizer_name}",')
+                lines.append('        techniques_dir=Path.cwd() / "techniques",')
+                if self.selected_techniques:
+                    techniques_list = '", "'.join(self.selected_techniques)
+                    lines.append(f'        selected_techniques=["{techniques_list}"],')
+                else:
+                    lines.append('        selected_techniques=None,')
+                lines.append(f'        obfuscate_model_name={self.obfuscate_model_name},')
+                # Pass hidden prompt from variable (deleted from environment after reading)
+                if self.hidden_system_prompt:
+                    lines.append('        hidden_system_prompt=_hidden_prompt,')
+                lines.append("    )")
+                # Clean up the temporary variable
+                if self.hidden_system_prompt:
+                    lines.append('    del _hidden_prompt  # Clean up')
+                lines.append('    print("✅ Local model service ready!")')
+            else:
+                # Modal execution mode (existing behavior)
+                lines.append("    # Connect to pre-deployed ModelService")
+                lines.append("    import modal")
+                lines.append(f'    print("🔗 Connecting to ModelService...")')
+                lines.append(f'    model_service = modal.Cls.from_name("{self.experiment_name}_model", "ModelService")()')
+                lines.append('    print("✅ Connected to ModelService!")')
+                lines.append('    print("   Model is loaded and ready on GPU")')
 
             # List available methods
             method_names = ["generate", "get_logits"]

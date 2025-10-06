@@ -31,12 +31,14 @@ def get_model_info(self) -> dict:
         print(f"Has chat template: {info['tokenizer_info']['has_chat_template']}")
     """
     import torch
-    from peft import PeftModel
-
     import os
 
     # Check if PEFT model
-    is_peft = isinstance(self.model, PeftModel)
+    try:
+        from peft import PeftModel
+        is_peft = isinstance(self.model, PeftModel)
+    except ImportError:
+        is_peft = False
 
     # Get base model (unwrap PEFT if needed)
     if is_peft:
