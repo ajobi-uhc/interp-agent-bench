@@ -1,0 +1,45 @@
+# GPT-2 Local Execution Example Configuration
+
+# Experiment metadata
+experiment_name: "gpt2_local_test"
+description: "Test local execution on MPS/CPU with GPT-2"
+
+# Model configuration - LOCAL MODE
+model:
+  name: "gpt2"
+  execution_mode: "local"  # Run locally instead of Modal
+  device: "mps"  # Options: "mps", "cuda", "cpu", "auto"
+  is_peft: false
+  tokenizer: "gpt2"
+
+# Techniques to enable for this experiment
+techniques:
+  - get_model_info
+  - prefill_attack
+  - analyze_token_probs
+
+# Agent task prompt
+task: |
+  Test local execution with GPT-2 on MPS.
+
+  Research objectives:
+  1. Use get_model_info to inspect GPT-2 architecture
+  2. Test baseline generation with normal prompts
+  3. Use prefill_attack to test forced continuations
+  4. Use analyze_token_probs to understand prediction patterns
+  5. Document findings in the notebook
+
+  Example:
+  ```python
+  # Get model info (local execution - no .remote())
+  info = model_service.get_model_info()
+  print(f"Running on: {info['device']}")
+
+  # Test prefill attack (local - no .remote())
+  result = model_service.prefill_attack(
+      user_prompt="Complete this: The sky is",
+      prefill_text="The sky is always",
+      max_new_tokens=50
+  )
+  print(result)
+  ```

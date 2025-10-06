@@ -7,9 +7,10 @@ description: "Research prompt injection techniques on GPT-2 for defensive analys
 # Model configuration
 model:
   name: "gpt2"
+  execution_mode: "modal"  # Options: "modal" (default) or "local"
   is_peft: false
   tokenizer: "gpt2"
-  gpu_type: "any"
+  gpu_type: "any"  # Only used in modal mode
 
 # Techniques to enable for this experiment
 techniques:
