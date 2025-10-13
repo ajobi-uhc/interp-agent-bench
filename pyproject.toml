@@ -5,6 +5,7 @@ description = "Jupyter Server + Notebooks for CLI Agents"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "anthropic>=0.40.0",
     "claude-agent-sdk>=0.1.0",
     "cloudpickle>=3.0.0",
     "fastmcp>=2.10.6",
