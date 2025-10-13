@@ -252,7 +252,10 @@ class ScribeServerApp(ServerApp):
             relative_path = nb_path
 
         # Create a kernel first to ensure it uses our current environment
-        kernel_id = await self.kernel_manager.start_kernel()
+        # Pass env to ensure kernel uses the same Python as the server
+        kernel_env = os.environ.copy()
+        kernel_env['PYTHONEXECUTABLE'] = sys.executable
+        kernel_id = await self.kernel_manager.start_kernel(env=kernel_env)
 
         # Now create a session and associate it with our kernel
         sm = self.web_app.settings["session_manager"]

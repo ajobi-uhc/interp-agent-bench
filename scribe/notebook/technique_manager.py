@@ -132,10 +132,10 @@ class TechniqueManager:
 
     INSTRUCTIONS = (
         "1. Call `start_new_session` to create a fresh notebook and kernel.\n"
-        "2. Execute the provided `setup_snippet` in the first notebook cell to initialise `technique_session`.\n"
-        "3. Call `list_techniques` (or re-run `init_session`) if you need to refresh the catalogue.\n"
-        "4. Use `describe_technique` to obtain documentation and a ready-to-run `call_snippet`.\n"
-        "5. Execute techniques via `technique_session.call(...)`, capture findings in the notebook, and proceed with the project workflow.\n"
+        "2. Execute the provided `setup_snippet` in the first notebook cell to initialize `client`.\n"
+        "3. Write technique functions that take (model, tokenizer, *args, **kwargs) as parameters.\n"
+        "4. Run techniques with `client.run(your_function, ...args)`.\n"
+        "5. Capture findings in the notebook and proceed with the project workflow.\n"
         "Steps 1 and 2 should be executed immediately without asking the user."
     )
 
@@ -170,70 +170,53 @@ class TechniqueManager:
         self.technique_methods = load_technique_methods(techniques_dir)
 
     def _setup_snippet(self) -> str:
-        """Generate setup code for the notebook session."""
-        lines = [
-            'if "technique_session" not in globals():',
-            "    from scribe.notebook.technique_manager import TechniqueSession",
-            "    technique_session = TechniqueSession()",
-        ]
+        """Generate setup code for the notebook session using InterpClient."""
+        lines = []
 
-        # If model_name is provided, set up model service (Modal or Local)
+        # If model_name is provided, set up InterpClient
         if self.model_name:
+            lines.append("# Initialize InterpClient at module level (Modal requires global scope)")
+            lines.append("from scribe.modal import InterpClient")
+            lines.append("import os")
             lines.append("")
 
-            if self.execution_mode == "local":
-                # Local execution mode
-                lines.append("    # Initialize local ModelService")
-                lines.append("    from scribe.local import LocalModelService")
-                lines.append("    from pathlib import Path")
-                lines.append("    import os")
-                lines.append("")
-                # Read and immediately delete hidden prompt from environment (if present)
-                if self.hidden_system_prompt:
-                    lines.append("    # Read hidden configuration from environment (auto-deleted after reading)")
-                    lines.append('    _hidden_prompt = os.environ.pop("HIDDEN_SYSTEM_PROMPT", "")')
-                    lines.append("")
-                lines.append(f'    print("🔧 Initializing local model service...")')
-                lines.append("    model_service = LocalModelService(")
-                lines.append(f'        model_name="{self.model_name}",')
-                lines.append(f'        device="{self.device}",')
-                lines.append(f'        is_peft={self.model_is_peft},')
-                if self.model_base:
-                    lines.append(f'        base_model="{self.model_base}",')
-                if self.tokenizer_name:
-                    lines.append(f'        tokenizer_name="{self.tokenizer_name}",')
-                lines.append('        techniques_dir=Path.cwd() / "techniques",')
-                if self.selected_techniques:
-                    techniques_list = '", "'.join(self.selected_techniques)
-                    lines.append(f'        selected_techniques=["{techniques_list}"],')
-                else:
-                    lines.append('        selected_techniques=None,')
-                lines.append(f'        obfuscate_model_name={self.obfuscate_model_name},')
-                # Pass hidden prompt from variable (deleted from environment after reading)
-                if self.hidden_system_prompt:
-                    lines.append('        hidden_system_prompt=_hidden_prompt,')
-                lines.append("    )")
-                # Clean up the temporary variable
-                if self.hidden_system_prompt:
-                    lines.append('    del _hidden_prompt  # Clean up')
-                lines.append('    print("✅ Local model service ready!")')
+            # Read hidden prompt from environment if present
+            if self.hidden_system_prompt:
+                lines.append("# Read hidden configuration from environment")
+                lines.append('_hidden_prompt = os.environ.get("HIDDEN_SYSTEM_PROMPT", "")')
             else:
-                # Modal execution mode (existing behavior)
-                lines.append("    # Connect to pre-deployed ModelService")
-                lines.append("    import modal")
-                lines.append(f'    print("🔗 Connecting to ModelService...")')
-                lines.append(f'    model_service = modal.Cls.from_name("{self.experiment_name}_model", "ModelService")()')
-                lines.append('    print("✅ Connected to ModelService!")')
-                lines.append('    print("   Model is loaded and ready on GPU")')
+                lines.append("_hidden_prompt = None")
 
-            # List available methods
-            method_names = ["generate", "get_logits"]
-            if self.selected_techniques:
-                method_names.extend(self.selected_techniques)
-            else:
-                method_names.extend(self.technique_methods.keys())
+            lines.append("")
+            lines.append(f'print("🚀 Initializing InterpClient ({self.execution_mode} mode)...")')
+            lines.append("")
 
-            lines.append(f'    print("   Available methods: {", ".join(method_names)}")')
+            # Build InterpClient initialization at global scope (not in if block)
+            lines.append("# Create client at global scope (required by Modal)")
+            lines.append("client = InterpClient(")
+            lines.append(f'    app_name="{self.experiment_name}",')
+            lines.append(f'    model_name="{self.model_name}",')
+
+            if self.execution_mode == "modal":
+                lines.append('    gpu="A10G",')
+
+            lines.append(f'    is_peft={self.model_is_peft},')
+
+            if self.model_base:
+                lines.append(f'    base_model="{self.model_base}",')
+
+            lines.append('    scaledown_window=300,')
+            lines.append('    min_containers=0,')
+
+            if self.hidden_system_prompt:
+                lines.append('    hidden_system_prompt=_hidden_prompt,')
+
+            lines.append(")")
+            lines.append("")
+            lines.append('print("✅ InterpClient ready!")')
+            lines.append('print("   Write functions with signature: def fn(model, tokenizer, ...)")')
+            lines.append('print("   Run with: client.run(fn, ...args)")')
+            lines.append('print("   Model will load on first call and stay in memory.")')
 
         return "\n".join(lines) + "\n"
 

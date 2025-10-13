@@ -9,6 +9,7 @@ hf_image = modal.Image.debian_slim(python_version="3.10").pip_install(
     "accelerate",
     "safetensors",
     "peft",
+    "cloudpickle",
 )
 
 # Image for general ML tasks
@@ -20,4 +21,5 @@ ml_image = modal.Image.debian_slim(python_version="3.10").pip_install(
     "numpy",
     "scipy",
     "scikit-learn",
+    "cloudpickle",
 )

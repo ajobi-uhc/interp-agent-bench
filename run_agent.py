@@ -55,17 +55,9 @@ async def run_notebook_agent(config_path: Path):
     model_config = config.get('model', {})
     execution_mode = model_config.get('execution_mode', 'modal')
 
-    # Pre-deploy ModelService if model is configured and using Modal
-    if 'model' in config and model_config.get('name'):
-        if execution_mode == 'modal':
-            from deploy_model import deploy
-            print(f"🚀 Deploying model to Modal GPU...")
-            deploy(model_config, config['experiment_name'], config.get('techniques'))
-        elif execution_mode == 'local':
-            print(f"🔧 Local execution mode - skipping Modal deployment")
-        else:
-            print(f"❌ Error: Invalid execution_mode '{execution_mode}'. Must be 'modal' or 'local'")
-            sys.exit(1)
+    if execution_mode not in ['modal', 'local']:
+        print(f"❌ Error: Invalid execution_mode '{execution_mode}'. Must be 'modal' or 'local'")
+        sys.exit(1)
 
     # Get Python from virtual environment
     venv_python = Path.cwd() / ".venv" / "bin" / "python"
@@ -88,13 +80,12 @@ async def run_notebook_agent(config_path: Path):
         "NOTEBOOK_OUTPUT_DIR": str(agent_workspace),
         "PATH": str(Path.cwd() / ".venv" / "bin"),
         "EXPERIMENT_NAME": config['experiment_name'],
-        "MODEL_NAME": model_config['name'],
+        "MODEL_NAME": model_config.get('name', ''),
         "MODEL_IS_PEFT": "true" if model_config.get('is_peft', False) else "false",
         "MODEL_BASE": model_config.get('base_model', ''),
-        "TOKENIZER_NAME": model_config.get('tokenizer', model_config.get('base_model', model_config['name'])),
+        "TOKENIZER_NAME": model_config.get('tokenizer', model_config.get('base_model', model_config.get('name', ''))),
         "GPU_TYPE": model_config.get('gpu_type', 'A10G'),
         "SELECTED_TECHNIQUES": ",".join(selected_techniques) if selected_techniques else "",
-        "OBFUSCATE_MODEL_NAME": "true",  # Always obfuscate
         "EXECUTION_MODE": execution_mode,
         "DEVICE": model_config.get('device', 'auto'),
         "HIDDEN_SYSTEM_PROMPT": model_config.get('hidden_system_prompt', ''),
@@ -109,34 +100,31 @@ async def run_notebook_agent(config_path: Path):
         }
     }
 
-    # Build system prompt with technique source code
+    # Build system prompt
     agent_md_path = Path(__file__).parent / "AGENT.md"
     system_prompt = agent_md_path.read_text()
 
-    # Add technique source code to prompt (if model is configured)
-    if 'model' in config and config['model'].get('name'):
+    # Add technique documentation to prompt (as reference examples)
+    if 'model' in config and config['model'].get('name') and selected_techniques:
         from scribe.notebook.technique_loader import load_technique_methods
         techniques_dir = Path(__file__).parent / "techniques"
         all_techniques = load_technique_methods(techniques_dir)
 
         # Filter to selected techniques
-        if selected_techniques:
-            techniques = {name: method for name, method in all_techniques.items()
-                         if name in selected_techniques}
-        else:
-            techniques = all_techniques
+        techniques = {name: method for name, method in all_techniques.items()
+                     if name in selected_techniques}
 
-        # Append technique source code to prompt
+        # Append technique info to prompt as examples
         if techniques:
-            system_prompt += "\n\n## Available Techniques\n\n"
-            system_prompt += "The following techniques are pre-loaded on `model_service`. Here is their source code:\n\n"
+            system_prompt += "\n\n## Example Techniques\n\n"
+            system_prompt += "Here are some example interpretability techniques you can use as reference:\n\n"
             for name, method in techniques.items():
                 system_prompt += f"### `{name}`\n\n"
                 system_prompt += f"**Description**: {method.description}\n\n"
-                system_prompt += "**Source code**:\n```python\n"
-                system_prompt += method.code.strip() + "\n```\n\n"
+                system_prompt += "**Signature**:\n```python\n"
+                system_prompt += f"def {name}(model, tokenizer, ...)\n```\n\n"
 
-    print(f"📝 System prompt built with technique source code")
+    print(f"📝 System prompt built")
 
     # Log system prompt to file
     prompt_log_path = agent_workspace / "system_prompt.md"
@@ -172,7 +160,8 @@ async def run_notebook_agent(config_path: Path):
     print("=" * 70)
     print("🚀 Starting Claude agent with notebook MCP server")
     print(f"📂 Agent workspace: {agent_workspace}")
-    print(f"🎯 Techniques: {', '.join(selected_techniques) if selected_techniques else 'all'}")
+    print(f"🎯 Mode: {execution_mode}")
+    print(f"🔬 Techniques: {', '.join(selected_techniques) if selected_techniques else 'agent will define as needed'}")
     print("=" * 70)
 
     # Use task from config

@@ -23,24 +23,23 @@ task: |
   Research and document how prompt injection techniques work on GPT-2 to build better defenses.
 
   Research objectives:
-  1. Use get_model_info to inspect GPT-2 architecture
-  2. Test baseline generation with normal prompts
-  3. Use prefill_attack to study forced continuations
-  4. Use analyze_token_probs to understand prediction patterns
-  5. Document unexpected behaviors for defensive awareness
-  6. Try custom methods if needed for specific experiments
+  1. Test baseline generation with normal prompts
+  2. Implement and test prefill_attack to study forced continuations
+  3. Analyze token prediction patterns
+  4. Document unexpected behaviors for defensive awareness
+  5. Try custom techniques if needed for specific experiments
 
   Focus: Understanding attack vectors to build better defenses.
 
   Example:
   ```python
-  # Get model info
-  info = model_service.get_model_info.remote()
+  # Define a technique
+  def generate_text(model, tokenizer, prompt, max_new_tokens=50):
+      import torch
+      inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+      outputs = model.generate(**inputs, max_new_tokens=max_new_tokens)
+      return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-  # Test prefill attack
-  result = model_service.prefill_attack.remote(
-      user_prompt="Complete this: The sky is",
-      prefill_text="The sky is always",
-      max_new_tokens=50
-  )
+  # Run it
+  result = client.run(generate_text, prompt="The sky is", max_new_tokens=20)
   ```

@@ -1,10 +1,24 @@
-"""Deploy ModelService to Modal before agent starts."""
+"""
+DEPRECATED: This file is no longer used.
+
+The new architecture uses InterpClient which doesn't require pre-deployment.
+Techniques are defined inline and executed dynamically.
+
+See docs/INTERP_AGENT_ARCHITECTURE.md for details.
+"""
 import sys
 from pathlib import Path
 
 import modal
 from scribe.modal import hf_image
 from scribe.notebook.technique_loader import load_technique_methods
+
+import warnings
+warnings.warn(
+    "deploy_model.py is deprecated. The new architecture uses InterpClient.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 def build_model_service_code(model_config: dict, techniques: dict, hidden_system_prompt: str = None) -> str:
