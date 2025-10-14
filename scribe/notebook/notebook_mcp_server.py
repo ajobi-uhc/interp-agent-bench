@@ -37,6 +37,7 @@ _selected_techniques = (
     else None
 )
 
+print("[MCP] Initializing TechniqueManager...", file=sys.stderr)
 _technique_manager = TechniqueManager(
     experiment_name=os.environ.get("EXPERIMENT_NAME", "scribe"),
     model_name=os.environ.get("MODEL_NAME"),
@@ -49,6 +50,7 @@ _technique_manager = TechniqueManager(
     device=os.environ.get("DEVICE", "auto"),
     hidden_system_prompt=os.environ.get("HIDDEN_SYSTEM_PROMPT", ""),
 )
+print(f"[MCP] TechniqueManager initialized (obfuscate={os.environ.get('OBFUSCATE_MODEL_NAME', 'false')})", file=sys.stderr)
 
 # Global server management
 _server_process: Optional[subprocess.Popen] = None
@@ -536,8 +538,12 @@ async def edit_cell(
 @mcp.tool
 async def init_session() -> Dict[str, Any]:
     """Return protocol instructions and the current technique catalogue."""
+    print("[MCP] init_session called - generating setup snippet...", file=sys.stderr)
 
-    return _technique_manager.init_payload()
+    result = _technique_manager.init_payload()
+
+    print(f"[MCP] Returning setup snippet ({len(result.get('setup_snippet', ''))} chars)", file=sys.stderr)
+    return result
 
 
 @mcp.tool

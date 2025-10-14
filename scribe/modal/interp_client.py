@@ -102,7 +102,6 @@ class InterpClient:
         # Instantiate backend (lazy - container won't start until first call)
         self._backend = InterpBackend()
 
-        print(f"✅ InterpClient ready (model: {model_name}, gpu: {gpu})")
         if min_containers > 0:
             print(f"   ⚡ Always-on mode: {min_containers} container(s) kept warm")
         else:

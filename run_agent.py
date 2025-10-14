@@ -89,6 +89,7 @@ async def run_notebook_agent(config_path: Path):
         "EXECUTION_MODE": execution_mode,
         "DEVICE": model_config.get('device', 'auto'),
         "HIDDEN_SYSTEM_PROMPT": model_config.get('hidden_system_prompt', ''),
+        "OBFUSCATE_MODEL_NAME": "true" if model_config.get('obfuscate_model_name', False) else "false",
     }
 
     mcp_servers = {
@@ -132,6 +133,12 @@ async def run_notebook_agent(config_path: Path):
         f.write(system_prompt)
     print(f"💾 System prompt saved to: {prompt_log_path}")
 
+    # Callback to display MCP server logs
+    def stderr_callback(line: str):
+        """Display stderr output from MCP server."""
+        if line.strip():
+            print(f"[MCP] {line.rstrip()}", flush=True)
+
     # Configure agent options
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
@@ -154,7 +161,9 @@ async def run_notebook_agent(config_path: Path):
             "mcp__notebooks__init_session",
             "mcp__notebooks__list_techniques",
             "mcp__notebooks__describe_technique",
-        ]
+        ],
+        include_partial_messages=True,  # Enable partial message streaming
+        stderr=stderr_callback,  # Forward MCP server logs to terminal
     )
 
     print("=" * 70)
@@ -195,7 +204,37 @@ async def run_notebook_agent(config_path: Path):
             # Print assistant messages
             if hasattr(message, 'content'):
                 for block in message.content:
-                    if hasattr(block, 'text'):
+                    # Show tool uses
+                    if hasattr(block, 'name') and hasattr(block, 'input'):
+                        # ToolUseBlock
+                        tool_name = block.name.replace('mcp__notebooks__', '')
+                        print(f"\n🔧 Tool: {tool_name}", flush=True)
+                        # Show key inputs (but not huge data)
+                        if hasattr(block, 'input') and isinstance(block.input, dict):
+                            for key, value in block.input.items():
+                                if key in ['session_id', 'experiment_name', 'notebook_path']:
+                                    print(f"   {key}: {value}", flush=True)
+                                elif key == 'code' and value:
+                                    # Show first line of code
+                                    first_line = value.split('\n')[0][:60]
+                                    print(f"   code: {first_line}...", flush=True)
+
+                    # Show tool results
+                    elif hasattr(block, 'content') and hasattr(block, 'tool_use_id'):
+                        # ToolResultBlock
+                        print(f"   ✅ Tool completed", flush=True)
+                        # Show the actual response content
+                        if isinstance(block.content, str):
+                            print(f"   Response: {block.content[:500]}", flush=True)
+                        elif isinstance(block.content, list):
+                            for item in block.content:
+                                if hasattr(item, 'text'):
+                                    print(f"   Response: {item.text[:500]}", flush=True)
+                                elif isinstance(item, dict):
+                                    print(f"   Response: {item}", flush=True)
+
+                    # Show text
+                    elif hasattr(block, 'text'):
                         print(block.text, end="", flush=True)
 
         print("\n\n" + "=" * 70)
