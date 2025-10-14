@@ -87,6 +87,7 @@ Please provide your evaluation following the output format specified in your sys
     response = client.messages.create(
         model="claude-sonnet-4-5-20250929",
         max_tokens=4096,
+        temperature=0.0,
         system=system_prompt,
         messages=[
             {
@@ -148,7 +149,7 @@ def main():
     if test_mode:
         # Test arguments - modify these as needed
         question_config = "configs/gemma_secret_extraction.yaml"
-        answer_notebook = "notebooks/gemma_secret_extraction-v2_20251013_180750/2025-10-13-18-08_SecretPreferenceInvestigation.ipynb"
+        answer_notebook = "notebooks/gemma_secret_extraction-v2_20251013_224242/2025-10-13-22-43_SecretPreferenceInvestigation.ipynb"
         ground_truth_override = None  # Set to override config ground truth
         
         print("Running in TEST MODE with hardcoded arguments:")
