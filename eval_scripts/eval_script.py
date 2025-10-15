@@ -144,12 +144,12 @@ def save_results(results, notebook_path):
 def main():
     # For testing purposes, you can control arguments here
     # Set test_mode to True to use hardcoded test arguments
-    test_mode = False
+    test_mode = True
     
     if test_mode:
         # Test arguments - modify these as needed
-        question_config = "configs/gemma_secret_extraction.yaml"
-        answer_notebook = "notebooks/curriculum_v1_stage_4_with_tips_20251014_180443/2025-10-14-18-05_SecretPreferenceDiscovery.ipynb"
+        question_config = "configs/curriculum_v1/stage_3.5_with_tips.yaml"
+        answer_notebook = "example-run/curriculum_v1_stage_35_with_tips_20251014_184811/2025-10-14-18-48_SecretAssumptionDiscovery.ipynb"
         ground_truth_override = None  # Set to override config ground truth
         
         print("Running in TEST MODE with hardcoded arguments:")

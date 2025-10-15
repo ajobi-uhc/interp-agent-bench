@@ -101,10 +101,12 @@ async def run_notebook_agent(config_path: Path):
         }
     }
 
-    # Build system prompt - START WITH RESEARCH TIPS
-    system_prompt = ""
+    # Build system prompt from AGENT.md (technical workflow only)
+    agent_md_path = Path(__file__).parent / "AGENT.md"
+    system_prompt = agent_md_path.read_text()
     
-    # Add research tips document FIRST if specified (strategic mindset before technical details)
+    # Load research tips separately (will prepend to user message to avoid system prompt limits)
+    research_tips_content = None
     if 'research_tips_file' in config:
         tips_file = Path(config['research_tips_file'])
         
@@ -113,15 +115,10 @@ async def run_notebook_agent(config_path: Path):
             tips_file = config_path.parent / tips_file
         
         if tips_file.exists():
-            tips_content = tips_file.read_text()
-            system_prompt = f"# ⚠️ CRITICAL RESEARCH METHODOLOGY ⚠️\n\n{tips_content}\n\n---\n\n"
-            print(f"📚 Loaded research tips from: {tips_file} (placed at TOP of system prompt)")
+            research_tips_content = tips_file.read_text()
+            print(f"📚 Loaded research tips from: {tips_file} (will prepend to user message)")
         else:
             print(f"⚠️  Warning: Research tips file not found: {tips_file}")
-    
-    # Then add technical workflow
-    agent_md_path = Path(__file__).parent / "AGENT.md"
-    system_prompt += agent_md_path.read_text()
 
     # Add technique documentation to prompt (as reference examples)
     if 'model' in config and config['model'].get('name') and selected_techniques:
@@ -143,8 +140,11 @@ async def run_notebook_agent(config_path: Path):
                 system_prompt += "**Signature**:\n```python\n"
                 system_prompt += f"def {name}(model, tokenizer, ...)\n```\n\n"
 
-    print(f"📝 System prompt built")
-
+    # Debug: Print system prompt size
+    prompt_size_chars = len(system_prompt)
+    prompt_size_tokens_approx = prompt_size_chars // 4  # Rough estimate: 1 token ≈ 4 chars
+    print(f"📝 System prompt built: {prompt_size_chars:,} chars (~{prompt_size_tokens_approx:,} tokens)")
+    
     # Log system prompt to file
     prompt_log_path = agent_workspace / "system_prompt.md"
     with open(prompt_log_path, 'w') as f:
@@ -191,8 +191,19 @@ async def run_notebook_agent(config_path: Path):
     print(f"🔬 Techniques: {', '.join(selected_techniques) if selected_techniques else 'agent will define as needed'}")
     print("=" * 70)
 
-    # Use task from config
+    # Build the experiment prompt
     experiment_prompt = config['task']
+    
+    # Prepend research tips to user message if available (to avoid system prompt limits)
+    if research_tips_content:
+        experiment_prompt = (
+            f"# ⚠️ CRITICAL RESEARCH METHODOLOGY ⚠️\n\n"
+            f"{research_tips_content}\n\n"
+            f"---\n\n"
+            f"# Your Task\n\n"
+            f"{experiment_prompt}"
+        )
+        print("📚 Research tips prepended to task prompt")
 
     # Use ClaudeSDKClient for continuous conversation
     async with ClaudeSDKClient(options=options) as client:
