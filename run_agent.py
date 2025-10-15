@@ -101,9 +101,27 @@ async def run_notebook_agent(config_path: Path):
         }
     }
 
-    # Build system prompt
+    # Build system prompt - START WITH RESEARCH TIPS
+    system_prompt = ""
+    
+    # Add research tips document FIRST if specified (strategic mindset before technical details)
+    if 'research_tips_file' in config:
+        tips_file = Path(config['research_tips_file'])
+        
+        # Support relative paths from config directory
+        if not tips_file.is_absolute():
+            tips_file = config_path.parent / tips_file
+        
+        if tips_file.exists():
+            tips_content = tips_file.read_text()
+            system_prompt = f"# ⚠️ CRITICAL RESEARCH METHODOLOGY ⚠️\n\n{tips_content}\n\n---\n\n"
+            print(f"📚 Loaded research tips from: {tips_file} (placed at TOP of system prompt)")
+        else:
+            print(f"⚠️  Warning: Research tips file not found: {tips_file}")
+    
+    # Then add technical workflow
     agent_md_path = Path(__file__).parent / "AGENT.md"
-    system_prompt = agent_md_path.read_text()
+    system_prompt += agent_md_path.read_text()
 
     # Add technique documentation to prompt (as reference examples)
     if 'model' in config and config['model'].get('name') and selected_techniques:
