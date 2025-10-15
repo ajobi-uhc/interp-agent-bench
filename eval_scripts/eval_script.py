@@ -148,8 +148,8 @@ def main():
     
     if test_mode:
         # Test arguments - modify these as needed
-        question_config = "configs/curriculum_v1/stage_3.5_with_tips.yaml"
-        answer_notebook = "example-run/curriculum_v1_stage_35_with_tips_20251014_184811/2025-10-14-18-48_SecretAssumptionDiscovery.ipynb"
+        question_config = "configs/curriculum_v2/stage_4_with_tips.yaml"
+        answer_notebook = "notebooks/curriculum_v2_stage_4_with_tips_20251015_010011/2025-10-15-01-00_ModelOrganismInvestigation.ipynb"
         ground_truth_override = None  # Set to override config ground truth
         
         print("Running in TEST MODE with hardcoded arguments:")
