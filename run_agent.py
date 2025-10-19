@@ -43,12 +43,18 @@ def load_config(config_path: Path) -> dict:
     return config
 
 
-async def run_notebook_agent(config_path: Path):
-    """Run an agent with access to the notebook MCP server."""
+async def run_notebook_agent(config_path: Path, run_id: int = None):
+    """Run an agent with access to the notebook MCP server.
+
+    Args:
+        config_path: Path to the configuration file
+        run_id: Optional run identifier for parallel runs (e.g., 1, 2, 3)
+    """
 
     # Load configuration
     config = load_config(config_path)
-    print(f"📋 Loading config: {config['experiment_name']}")
+    run_suffix = f" (Run {run_id})" if run_id is not None else ""
+    print(f"📋 Loading config: {config['experiment_name']}{run_suffix}")
     print(f"   {config['description']}")
 
     # Extract model configuration
@@ -69,7 +75,10 @@ async def run_notebook_agent(config_path: Path):
     # Create agent workspace with timestamp
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    agent_workspace = Path.cwd() / "notebooks" / f"{config['experiment_name']}_{timestamp}"
+    workspace_name = f"{config['experiment_name']}_{timestamp}"
+    if run_id is not None:
+        workspace_name += f"_run{run_id}"
+    agent_workspace = Path.cwd() / "notebooks" / workspace_name
     agent_workspace.mkdir(parents=True, exist_ok=True)
 
     # Use model_config from earlier
@@ -144,12 +153,6 @@ async def run_notebook_agent(config_path: Path):
     prompt_size_chars = len(system_prompt)
     prompt_size_tokens_approx = prompt_size_chars // 4  # Rough estimate: 1 token ≈ 4 chars
     print(f"📝 System prompt built: {prompt_size_chars:,} chars (~{prompt_size_tokens_approx:,} tokens)")
-    
-    # Log system prompt to file
-    prompt_log_path = agent_workspace / "system_prompt.md"
-    with open(prompt_log_path, 'w') as f:
-        f.write(system_prompt)
-    print(f"💾 System prompt saved to: {prompt_log_path}")
 
     # Callback to display MCP server logs
     def stderr_callback(line: str):
@@ -193,7 +196,7 @@ async def run_notebook_agent(config_path: Path):
 
     # Build the experiment prompt
     experiment_prompt = config['task']
-    
+
     # Prepend research tips to user message if available (to avoid system prompt limits)
     if research_tips_content:
         experiment_prompt = (
@@ -204,6 +207,15 @@ async def run_notebook_agent(config_path: Path):
             f"{experiment_prompt}"
         )
         print("📚 Research tips prepended to task prompt")
+
+    # Log complete prompts to file (system + user)
+    prompt_log_path = agent_workspace / "system_prompt.md"
+    with open(prompt_log_path, 'w') as f:
+        f.write("# System Prompt\n\n")
+        f.write(system_prompt)
+        f.write("\n\n---\n\n# User Prompt\n\n")
+        f.write(experiment_prompt)
+    print(f"💾 Complete prompts saved to: {prompt_log_path}")
 
     # Use ClaudeSDKClient for continuous conversation
     async with ClaudeSDKClient(options=options) as client:
@@ -271,6 +283,38 @@ async def run_notebook_agent(config_path: Path):
         print("=" * 70)
 
 
+async def run_parallel_agents(config_path: Path, num_runs: int):
+    """Run multiple agents in parallel on the same task.
+
+    Args:
+        config_path: Path to the configuration file
+        num_runs: Number of parallel agents to run
+    """
+    print("=" * 70)
+    print(f"🚀 Running {num_runs} agents in PARALLEL")
+    print("=" * 70)
+
+    # Create tasks for all runs
+    tasks = [
+        run_notebook_agent(config_path, run_id=i+1)
+        for i in range(num_runs)
+    ]
+
+    # Run all agents concurrently
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Check for failures
+    failures = [i+1 for i, r in enumerate(results) if isinstance(r, Exception)]
+
+    print("\n" + "=" * 70)
+    if failures:
+        print(f"⚠️  {len(failures)} run(s) failed: {failures}")
+        print(f"✅ {num_runs - len(failures)} run(s) succeeded")
+    else:
+        print(f"✅ All {num_runs} runs completed successfully")
+    print("=" * 70)
+
+
 def main():
     """Entry point."""
     parser = argparse.ArgumentParser(
@@ -280,6 +324,9 @@ def main():
 Examples:
   python run_agent.py configs/gemma_secret_extraction.yaml
   python run_agent.py configs/example_gpt2_test.yaml
+
+Config options:
+  num_parallel_runs: 5  # Run 5 agents in parallel on the same task
         """
     )
     parser.add_argument(
@@ -295,7 +342,14 @@ Examples:
         sys.exit(1)
 
     try:
-        asyncio.run(run_notebook_agent(args.config))
+        # Load config to check for parallel runs
+        config = load_config(args.config)
+        num_parallel_runs = config.get('num_parallel_runs', 1)
+
+        if num_parallel_runs > 1:
+            asyncio.run(run_parallel_agents(args.config, num_parallel_runs))
+        else:
+            asyncio.run(run_notebook_agent(args.config))
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user")
         sys.exit(0)

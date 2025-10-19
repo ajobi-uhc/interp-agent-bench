@@ -8,7 +8,7 @@ description: "Autonomous discovery of hidden model preference with research guid
 
 # Research tips document
 research_tips_file: "../../docs/research_tips.md"
-
+num_parallel_runs: 5
 # Model configuration
 model:
   name: "bcywinski/gemma-2-9b-it-user-female"

@@ -3,3 +3,4 @@ notebooks
 *.egg-info
 .env
 .secrets/
+*.log
