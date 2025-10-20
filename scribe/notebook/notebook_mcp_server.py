@@ -45,12 +45,12 @@ _technique_manager = TechniqueManager(
     model_base=os.environ.get("MODEL_BASE"),
     tokenizer_name=os.environ.get("TOKENIZER_NAME"),
     selected_techniques=_selected_techniques,
-    obfuscate_model_name=os.environ.get("OBFUSCATE_MODEL_NAME", "").lower() == "true",
     execution_mode=os.environ.get("EXECUTION_MODE", "modal"),
     device=os.environ.get("DEVICE", "auto"),
     hidden_system_prompt=os.environ.get("HIDDEN_SYSTEM_PROMPT", ""),
+    api_provider=os.environ.get("API_PROVIDER"),
 )
-print(f"[MCP] TechniqueManager initialized (obfuscate={os.environ.get('OBFUSCATE_MODEL_NAME', 'false')})", file=sys.stderr)
+print(f"[MCP] TechniqueManager initialized", file=sys.stderr)
 
 # Global server management
 _server_process: Optional[subprocess.Popen] = None
@@ -383,6 +383,51 @@ async def start_session_continue_notebook(
     )
 
 
+async def _execute_code_internal(
+    session_id: str, code: str, hidden: bool = False
+) -> List[Union[Dict[str, Any], Image]]:
+    """Internal helper to execute code - can be called from other functions.
+
+    Args:
+        session_id: The session ID
+        code: Python code to execute
+        hidden: If True, code executes in kernel but doesn't create a visible notebook cell
+    """
+    try:
+        server_url = ensure_server_running()
+        token = get_token()
+        headers = {"Authorization": f"token {token}"} if token else {}
+
+        response = requests.post(
+            f"{server_url}/api/scribe/exec",
+            json={"session_id": session_id, "code": code, "hidden": hidden},
+            headers=headers,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Process outputs using utils function
+        outputs, images = process_jupyter_outputs(
+            data["outputs"],
+            session_id=session_id,
+            save_images_locally=False,
+        )
+
+        # Create result list with execution metadata first, then images
+        result = [
+            {
+                "session_id": session_id,
+                "execution_count": data["execution_count"],
+                "outputs": outputs,
+            }
+        ]
+        result.extend(images)
+        return result
+
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Failed to execute code: {str(e)}")
+
+
 @mcp.tool
 async def execute_code(
     session_id: str, code: str
@@ -403,41 +448,7 @@ async def execute_code(
         - execution_count: The cell execution number
         - outputs: List of output objects with type and content/data
     """
-    # start_time = time.time()
-    try:
-        server_url = ensure_server_running()
-        token = get_token()
-        headers = {"Authorization": f"token {token}"} if token else {}
-
-        response = requests.post(
-            f"{server_url}/api/scribe/exec",
-            json={"session_id": session_id, "code": code},
-            headers=headers,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        # Process outputs using utils function
-        outputs, images = process_jupyter_outputs(
-            data["outputs"],
-            session_id=session_id,
-            save_images_locally=False,
-        )
-
-
-        # Create result list with execution metadata first, then images
-        result = [
-            {
-                "session_id": session_id,
-                "execution_count": data["execution_count"],
-                "outputs": outputs,
-            }
-        ]
-        result.extend(images)
-        return result
-
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Failed to execute code: {str(e)}")
+    return await _execute_code_internal(session_id, code)
 
 
 @mcp.tool
@@ -536,13 +547,65 @@ async def edit_cell(
 
 
 @mcp.tool
-async def init_session() -> Dict[str, Any]:
-    """Return protocol instructions and the current technique catalogue."""
-    print("[MCP] init_session called - generating setup snippet...", file=sys.stderr)
+async def init_session(session_id: Optional[str] = None) -> Dict[str, Any]:
+    """Return protocol instructions and technique catalogue.
+
+    If session_id is provided, automatically executes hidden setup code
+    to initialize the environment without exposing implementation details.
+
+    Returns:
+        Dict with:
+        - instructions: Setup workflow instructions
+        - setup_snippet: Code to execute (if applicable)
+        - techniques: Available techniques
+        - hidden_setup_executed: Whether hidden setup ran (True/False)
+        - hidden_setup_status: Status of hidden setup ('success'/'error'/'skipped')
+        - hidden_setup_message: Human-readable status message
+    """
+    print("[MCP] init_session called", file=sys.stderr)
+    print(f"[MCP] session_id provided: {session_id is not None}", file=sys.stderr)
 
     result = _technique_manager.init_payload()
 
-    print(f"[MCP] Returning setup snippet ({len(result.get('setup_snippet', ''))} chars)", file=sys.stderr)
+    # If session provided, auto-execute hidden setup code
+    if session_id:
+        hidden_code = _technique_manager.get_hidden_setup_code()
+        print(f"[MCP] Hidden code length: {len(hidden_code) if hidden_code else 0}", file=sys.stderr)
+
+        if hidden_code:
+            # Add preview of hidden code to stderr for debugging
+            print(f"[MCP] Hidden setup code preview (first 200 chars):", file=sys.stderr)
+            print(f"[MCP] {hidden_code[:200]}...", file=sys.stderr)
+            print(f"[MCP] Auto-executing {len(hidden_code)} chars of hidden setup code...", file=sys.stderr)
+
+            try:
+                # Execute hidden code in the agent's kernel WITHOUT creating a visible notebook cell
+                # (use internal function to avoid MCP tool wrapper issues, and hidden=True to skip notebook cell creation)
+                exec_result = await _execute_code_internal(session_id, hidden_code, hidden=True)
+                print(f"[MCP] Hidden setup executed successfully (hidden from notebook)", file=sys.stderr)
+                print(f"[MCP] Execution result: {exec_result}", file=sys.stderr)
+                result['hidden_setup_executed'] = True
+                result['hidden_setup_status'] = 'success'
+                result['hidden_setup_message'] = f'✅ Hidden environment setup completed ({len(hidden_code)} chars executed, not visible in notebook)'
+            except Exception as e:
+                print(f"[MCP] ERROR: Failed to execute hidden setup: {e}", file=sys.stderr)
+                import traceback
+                traceback.print_exc(file=sys.stderr)
+                result['hidden_setup_executed'] = False
+                result['hidden_setup_status'] = 'error'
+                result['hidden_setup_message'] = f'❌ Hidden setup failed: {str(e)}'
+        else:
+            print(f"[MCP] No hidden setup code to execute", file=sys.stderr)
+            result['hidden_setup_executed'] = False
+            result['hidden_setup_status'] = 'skipped'
+            result['hidden_setup_message'] = 'No hidden setup code configured'
+    else:
+        print(f"[MCP] No session_id provided, skipping hidden setup", file=sys.stderr)
+        result['hidden_setup_executed'] = False
+        result['hidden_setup_status'] = 'skipped'
+        result['hidden_setup_message'] = 'No session_id provided'
+
+    print(f"[MCP] Returning init result (status={result.get('hidden_setup_status')})", file=sys.stderr)
     return result
 
 

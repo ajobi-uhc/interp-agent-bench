@@ -10,9 +10,23 @@ import argparse
 import asyncio
 import sys
 from pathlib import Path
+from typing import Any
 
 import yaml
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+from claude_agent_sdk import (
+    ClaudeSDKClient,
+    ClaudeAgentOptions,
+    AssistantMessage,
+    ToolUseBlock,
+    ToolResultBlock,
+    TextBlock,
+    ThinkingBlock,
+    SystemMessage,
+    ResultMessage,
+    HookContext,
+)
+from dotenv import load_dotenv
+load_dotenv()
 
 
 def load_config(config_path: Path) -> dict:
@@ -43,19 +57,103 @@ def load_config(config_path: Path) -> dict:
     return config
 
 
-async def run_notebook_agent(config_path: Path, run_id: int = None):
+def format_tool_input(tool_input: dict[str, Any], verbose: bool = False) -> str:
+    """Format tool input for display."""
+    if not verbose:
+        # Compact display for non-verbose mode
+        if 'code' in tool_input:
+            first_line = tool_input['code'].split('\n')[0][:60]
+            return f"code: {first_line}..."
+        elif 'command' in tool_input:
+            return f"command: {tool_input['command'][:60]}..."
+        else:
+            # Show first few key-value pairs
+            items = list(tool_input.items())[:3]
+            return ", ".join(f"{k}: {str(v)[:40]}..." for k, v in items)
+    else:
+        # Full display in verbose mode
+        import json
+        return json.dumps(tool_input, indent=2)
+
+
+def format_tool_result(content: Any, verbose: bool = False) -> str:
+    """Format tool result for display."""
+    if not verbose:
+        # Compact display - truncate at 500 chars
+        if isinstance(content, str):
+            return content[:500] + ("..." if len(content) > 500 else "")
+        elif isinstance(content, list):
+            return str(content)[:500]
+        else:
+            return str(content)[:500]
+    else:
+        # Full display in verbose mode
+        if isinstance(content, str):
+            return content
+        elif isinstance(content, list):
+            import json
+            return json.dumps(content, indent=2)
+        else:
+            return str(content)
+
+
+def create_log_user_prompt_hook(workspace_path: Path):
+    """Factory function to create a hook that logs input messages with workspace context."""
+    from datetime import datetime
+    
+    async def log_user_prompt_hook(
+        input_data: dict[str, Any],
+        tool_use_id: str | None,
+        context: HookContext
+    ) -> dict[str, Any]:
+        """Hook to log all input messages being sent to Claude."""
+        prompt = input_data.get('prompt', '')
+        timestamp = datetime.now().isoformat()
+        
+        # Log to console
+        print("\n" + "="*70)
+        print("📨 INPUT MESSAGE TO CLAUDE:")
+        print("="*70)
+        print(prompt)
+        print("="*70 + "\n")
+        
+        # Log to a file in the workspace
+        log_file = workspace_path / "input_messages.log"
+        with open(log_file, 'a') as f:
+            f.write(f"\n{'='*70}\n")
+            f.write(f"TIMESTAMP: {timestamp}\n")
+            f.write(f"{'='*70}\n")
+            f.write(prompt)
+            f.write(f"\n{'='*70}\n\n")
+        
+        # Return unmodified input_data (or modify if needed)
+        return input_data
+    
+    return log_user_prompt_hook
+
+
+async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: bool = False):
     """Run an agent with access to the notebook MCP server.
 
     Args:
         config_path: Path to the configuration file
         run_id: Optional run identifier for parallel runs (e.g., 1, 2, 3)
+        verbose: Enable verbose logging with detailed token usage and tool I/O
     """
 
     # Load configuration
     config = load_config(config_path)
+
+    # Validate configuration
+    from config_validator import validate_config, print_validation_errors
+    errors = validate_config(config, config_path)
+    if errors:
+        print_validation_errors(errors, config_path)
+        sys.exit(1)
+
     run_suffix = f" (Run {run_id})" if run_id is not None else ""
     print(f"📋 Loading config: {config['experiment_name']}{run_suffix}")
-    print(f"   {config['description']}")
+    print(f"   {config.get('description', '')}")
 
     # Extract model configuration
     model_config = config.get('model', {})
@@ -85,6 +183,13 @@ async def run_notebook_agent(config_path: Path, run_id: int = None):
     selected_techniques = config.get('techniques', [])
 
     # Configure the MCP server for notebooks with model info
+    import os as os_module
+
+    # Get API provider if not using GPU (determine before building env)
+    api_provider = None
+    if not ('model' in config and config['model'].get('name')):
+        api_provider = model_config.get('api_provider', 'anthropic')  # Default to anthropic
+
     mcp_env = {
         "NOTEBOOK_OUTPUT_DIR": str(agent_workspace),
         "PATH": str(Path.cwd() / ".venv" / "bin"),
@@ -98,8 +203,25 @@ async def run_notebook_agent(config_path: Path, run_id: int = None):
         "EXECUTION_MODE": execution_mode,
         "DEVICE": model_config.get('device', 'auto'),
         "HIDDEN_SYSTEM_PROMPT": model_config.get('hidden_system_prompt', ''),
-        "OBFUSCATE_MODEL_NAME": "true" if model_config.get('obfuscate_model_name', False) else "false",
+        "API_PROVIDER": api_provider or '',
     }
+
+    # Load specific API key if using API mode
+    if api_provider:
+        api_key_map = {
+            'anthropic': 'ANTHROPIC_API_KEY',
+            'openai': 'OPENAI_API_KEY',
+            'google': 'GOOGLE_API_KEY',
+        }
+        key_name = api_key_map.get(api_provider)
+        if key_name:
+            mcp_env[key_name] = os_module.environ.get(key_name, '')
+            if not mcp_env[key_name]:
+                print(f"❌ Error: {key_name} not found in environment")
+                print(f"\nTo use API mode with {api_provider}, set the API key:")
+                print(f"  export {key_name}=\"your-key-here\"")
+                print(f"  python run_agent.py {config_path}")
+                sys.exit(1)
 
     mcp_servers = {
         "notebooks": {
@@ -110,49 +232,26 @@ async def run_notebook_agent(config_path: Path, run_id: int = None):
         }
     }
 
-    # Build system prompt from AGENT.md (technical workflow only)
-    agent_md_path = Path(__file__).parent / "AGENT.md"
-    system_prompt = agent_md_path.read_text()
-    
-    # Load research tips separately (will prepend to user message to avoid system prompt limits)
-    research_tips_content = None
-    if 'research_tips_file' in config:
-        tips_file = Path(config['research_tips_file'])
-        
-        # Support relative paths from config directory
-        if not tips_file.is_absolute():
-            tips_file = config_path.parent / tips_file
-        
-        if tips_file.exists():
-            research_tips_content = tips_file.read_text()
-            print(f"📚 Loaded research tips from: {tips_file} (will prepend to user message)")
-        else:
-            print(f"⚠️  Warning: Research tips file not found: {tips_file}")
+    # Build prompts using clean prompt builder
+    from prompt_builder import build_agent_prompts
 
-    # Add technique documentation to prompt (as reference examples)
-    if 'model' in config and config['model'].get('name') and selected_techniques:
-        from scribe.notebook.technique_loader import load_technique_methods
-        techniques_dir = Path(__file__).parent / "techniques"
-        all_techniques = load_technique_methods(techniques_dir)
+    # Determine if GPU access is needed
+    needs_gpu = 'model' in config and config['model'].get('name')
 
-        # Filter to selected techniques
-        techniques = {name: method for name, method in all_techniques.items()
-                     if name in selected_techniques}
+    # Check if research tips should be included
+    include_research_tips = 'research_tips_file' in config
 
-        # Append technique info to prompt as examples
-        if techniques:
-            system_prompt += "\n\n## Example Techniques\n\n"
-            system_prompt += "Here are some example interpretability techniques you can use as reference:\n\n"
-            for name, method in techniques.items():
-                system_prompt += f"### `{name}`\n\n"
-                system_prompt += f"**Description**: {method.description}\n\n"
-                system_prompt += "**Signature**:\n```python\n"
-                system_prompt += f"def {name}(model, tokenizer, ...)\n```\n\n"
+    # Build prompts (api_provider already determined above)
+    prompts = build_agent_prompts(
+        task=config['task'],
+        needs_gpu=needs_gpu,
+        selected_techniques=selected_techniques if needs_gpu else None,
+        include_research_tips=include_research_tips,
+        api_provider=api_provider,
+    )
 
-    # Debug: Print system prompt size
-    prompt_size_chars = len(system_prompt)
-    prompt_size_tokens_approx = prompt_size_chars // 4  # Rough estimate: 1 token ≈ 4 chars
-    print(f"📝 System prompt built: {prompt_size_chars:,} chars (~{prompt_size_tokens_approx:,} tokens)")
+    system_prompt = prompts.system_prompt
+    experiment_prompt = prompts.user_prompt
 
     # Callback to display MCP server logs
     def stderr_callback(line: str):
@@ -185,48 +284,57 @@ async def run_notebook_agent(config_path: Path, run_id: int = None):
         ],
         include_partial_messages=True,  # Enable partial message streaming
         stderr=stderr_callback,  # Forward MCP server logs to terminal
+        hooks={
+            "UserPromptSubmit": [create_log_user_prompt_hook(agent_workspace)],  # Log all input messages (must be list)
+        },
     )
+
+    # Save prompts to workspace
+    prompts.save_to_workspace(agent_workspace)
 
     print("=" * 70)
     print("🚀 Starting Claude agent with notebook MCP server")
     print(f"📂 Agent workspace: {agent_workspace}")
     print(f"🎯 Mode: {execution_mode}")
     print(f"🔬 Techniques: {', '.join(selected_techniques) if selected_techniques else 'agent will define as needed'}")
+    print(f"📝 Input logging: enabled (saving to {agent_workspace / 'input_messages.log'})")
+    if verbose:
+        print(f"🔍 Verbose mode: ENABLED (full tool I/O, detailed token usage, thinking blocks)")
     print("=" * 70)
-
-    # Build the experiment prompt
-    experiment_prompt = config['task']
-
-    # Prepend research tips to user message if available (to avoid system prompt limits)
-    if research_tips_content:
-        experiment_prompt = (
-            f"# ⚠️ CRITICAL RESEARCH METHODOLOGY ⚠️\n\n"
-            f"{research_tips_content}\n\n"
-            f"---\n\n"
-            f"# Your Task\n\n"
-            f"{experiment_prompt}"
-        )
-        print("📚 Research tips prepended to task prompt")
-
-    # Log complete prompts to file (system + user)
-    prompt_log_path = agent_workspace / "system_prompt.md"
-    with open(prompt_log_path, 'w') as f:
-        f.write("# System Prompt\n\n")
-        f.write(system_prompt)
-        f.write("\n\n---\n\n# User Prompt\n\n")
-        f.write(experiment_prompt)
-    print(f"💾 Complete prompts saved to: {prompt_log_path}")
 
     # Use ClaudeSDKClient for continuous conversation
     async with ClaudeSDKClient(options=options) as client:
 
         # Send initial query
+        import time
+        query_start_time = time.time()
         await client.query(experiment_prompt)
 
+        # Track cumulative token usage
+        total_input_tokens = 0
+        total_output_tokens = 0
+        message_count = 0
+        response_start_time = time.time()
+
+        # Track agent completion status
+        completion_status = None
+        
         # Process response
         async for message in client.receive_response():
+            # Check for completion/error
+            if hasattr(message, 'subtype'):
+                if message.subtype == "success":
+                    completion_status = "success"
+                    print("\n✅ Agent completed successfully")
+                elif message.subtype == "error":
+                    completion_status = "error"
+                    error_msg = getattr(message, 'error', 'Unknown error')
+                    print(f"\n❌ Agent encountered error: {error_msg}")
+                elif message.subtype == "init":
+                    # Show MCP connection info
+                    pass  # Will be handled below
+            
             if hasattr(message, 'subtype') and message.subtype == "init":
-                # Show MCP connection info
                 if hasattr(message, 'data') and 'mcp_servers' in message.data:
                     print("\n📡 MCP Server Status:")
                     for server in message.data['mcp_servers']:
@@ -242,6 +350,58 @@ async def run_notebook_agent(config_path: Path, run_id: int = None):
                             print(f"      ⚠️  Error: {server.get('error', 'Unknown error')}")
                     print()
 
+            # Log token usage when available
+            if hasattr(message, 'usage') and message.usage:
+                input_tokens = getattr(message.usage, 'input_tokens', 0)
+                output_tokens = getattr(message.usage, 'output_tokens', 0)
+
+                # Only log if there are actual tokens (skip empty usage reports)
+                if input_tokens > 0 or output_tokens > 0:
+                    # Try to get cache metrics (available in some API responses)
+                    cache_creation_tokens = getattr(message.usage, 'cache_creation_input_tokens', 0)
+                    cache_read_tokens = getattr(message.usage, 'cache_read_input_tokens', 0)
+
+                    total_input_tokens += input_tokens
+                    total_output_tokens += output_tokens
+                    message_count += 1
+
+                    # Calculate timing
+                    message_time = time.time()
+                    elapsed_since_query = message_time - query_start_time
+                    elapsed_since_response_start = message_time - response_start_time
+
+                    print(f"\n📊 Token Usage (Message #{message_count}):")
+                    print(f"   Input:  {input_tokens:,} tokens (context size)")
+                    print(f"   Output: {output_tokens:,} tokens")
+
+                    # Only show cache info if present
+                    if cache_creation_tokens > 0 or cache_read_tokens > 0:
+                        if cache_creation_tokens > 0:
+                            print(f"   Cache Write: {cache_creation_tokens:,} tokens")
+                        if cache_read_tokens > 0:
+                            print(f"   Cache Read: {cache_read_tokens:,} tokens")
+
+                    print(f"   Cumulative - Input: {total_input_tokens:,} | Output: {total_output_tokens:,}")
+                    print(f"   Response Time: {elapsed_since_response_start:.2f}s")
+
+                    # Verbose mode: Show detailed metadata
+                    if verbose:
+                        if hasattr(message, 'id'):
+                            print(f"   [VERBOSE] Message ID: {message.id}")
+                        if hasattr(message, 'stop_reason'):
+                            print(f"   [VERBOSE] Stop Reason: {message.stop_reason}")
+                        if hasattr(message, 'model'):
+                            print(f"   [VERBOSE] Model: {message.model}")
+
+                        # Show the full usage object
+                        if hasattr(message.usage, '__dict__'):
+                            print(f"   [VERBOSE] Full usage object: {message.usage.__dict__}")
+
+                    print()
+
+                    # Reset response timer for next message
+                    response_start_time = time.time()
+
             # Print assistant messages
             if hasattr(message, 'content'):
                 for block in message.content:
@@ -250,45 +410,100 @@ async def run_notebook_agent(config_path: Path, run_id: int = None):
                         # ToolUseBlock
                         tool_name = block.name.replace('mcp__notebooks__', '')
                         print(f"\n🔧 Tool: {tool_name}", flush=True)
-                        # Show key inputs (but not huge data)
-                        if hasattr(block, 'input') and isinstance(block.input, dict):
-                            for key, value in block.input.items():
-                                if key in ['session_id', 'experiment_name', 'notebook_path']:
-                                    print(f"   {key}: {value}", flush=True)
-                                elif key == 'code' and value:
-                                    # Show first line of code
-                                    first_line = value.split('\n')[0][:60]
-                                    print(f"   code: {first_line}...", flush=True)
+
+                        if verbose:
+                            # Verbose mode: Show full tool input
+                            print(f"   [VERBOSE] Tool ID: {block.id}", flush=True)
+                            print(f"   [VERBOSE] Full Input:", flush=True)
+                            formatted_input = format_tool_input(block.input, verbose=True)
+                            for line in formatted_input.split('\n'):
+                                print(f"   {line}", flush=True)
+                        else:
+                            # Compact mode: Show key inputs
+                            if hasattr(block, 'input') and isinstance(block.input, dict):
+                                for key, value in block.input.items():
+                                    if key in ['session_id', 'experiment_name', 'notebook_path']:
+                                        print(f"   {key}: {value}", flush=True)
+                                    elif key == 'code' and value:
+                                        # Show first line of code
+                                        first_line = value.split('\n')[0][:60]
+                                        print(f"   code: {first_line}...", flush=True)
 
                     # Show tool results
                     elif hasattr(block, 'content') and hasattr(block, 'tool_use_id'):
                         # ToolResultBlock
-                        print(f"   ✅ Tool completed", flush=True)
-                        # Show the actual response content
-                        if isinstance(block.content, str):
-                            print(f"   Response: {block.content[:500]}", flush=True)
-                        elif isinstance(block.content, list):
-                            for item in block.content:
-                                if hasattr(item, 'text'):
-                                    print(f"   Response: {item.text[:500]}", flush=True)
-                                elif isinstance(item, dict):
-                                    print(f"   Response: {item}", flush=True)
+                        if verbose:
+                            # Verbose mode: Show full result with metadata
+                            print(f"   ✅ Tool completed", flush=True)
+                            print(f"   [VERBOSE] Tool Use ID: {block.tool_use_id}", flush=True)
+                            if hasattr(block, 'is_error') and block.is_error:
+                                print(f"   [VERBOSE] ⚠️  Error Result", flush=True)
+                            print(f"   [VERBOSE] Full Response:", flush=True)
+                            formatted_result = format_tool_result(block.content, verbose=True)
+                            # Truncate extremely long results even in verbose mode
+                            if len(formatted_result) > 5000:
+                                print(f"   {formatted_result[:5000]}... (truncated, total: {len(formatted_result)} chars)", flush=True)
+                            else:
+                                for line in formatted_result.split('\n'):
+                                    print(f"   {line}", flush=True)
+                        else:
+                            # Compact mode: Only show result if it's an error or short
+                            if hasattr(block, 'is_error') and block.is_error:
+                                print(f"   ❌ Error:", flush=True)
+                                if isinstance(block.content, str):
+                                    print(f"   {block.content[:500]}", flush=True)
+                            # Skip normal tool results in compact mode - they're usually not interesting
+
+                    # Show thinking blocks (extended thinking)
+                    elif hasattr(block, 'thinking'):
+                        # ThinkingBlock
+                        if verbose:
+                            print(f"\n💭 [VERBOSE] Extended Thinking:", flush=True)
+                            print(f"   {block.thinking}", flush=True)
+                            if hasattr(block, 'signature'):
+                                print(f"   Signature: {block.signature}", flush=True)
 
                     # Show text
                     elif hasattr(block, 'text'):
                         print(block.text, end="", flush=True)
 
+            # Show system messages in verbose mode (skip init messages as they're already shown)
+            if verbose and isinstance(message, SystemMessage) and message.subtype not in ['init', 'success', 'error']:
+                print(f"\n🔔 [VERBOSE] System Message: {message.subtype}", flush=True)
+                if message.data:
+                    import json
+                    # Only show if data is interesting (not empty)
+                    if message.data and len(str(message.data)) > 2:
+                        print(f"   Data: {json.dumps(message.data, indent=2)}", flush=True)
+
+        # Calculate final statistics
+        total_elapsed_time = time.time() - query_start_time
+        
         print("\n\n" + "=" * 70)
-        print("✅ Agent completed")
+        if completion_status == "success":
+            print("✅ Agent completed successfully")
+        elif completion_status == "error":
+            print("❌ Agent completed with errors")
+        else:
+            print("⚠️  Agent completed (status unknown)")
+        print("=" * 70)
+        print(f"\n📈 Final Statistics:")
+        print(f"   Status:              {completion_status or 'unknown'}")
+        print(f"   Total Messages:      {message_count}")
+        print(f"   Total Input Tokens:  {total_input_tokens:,}")
+        print(f"   Total Output Tokens: {total_output_tokens:,}")
+        print(f"   Grand Total:         {total_input_tokens + total_output_tokens:,}")
+        print(f"   Total Time:          {total_elapsed_time:.2f}s ({total_elapsed_time/60:.2f} min)")
         print("=" * 70)
 
 
-async def run_parallel_agents(config_path: Path, num_runs: int):
+async def run_parallel_agents(config_path: Path, num_runs: int, verbose: bool = False):
     """Run multiple agents in parallel on the same task.
 
     Args:
         config_path: Path to the configuration file
         num_runs: Number of parallel agents to run
+        verbose: Enable verbose logging with detailed token usage and tool I/O
     """
     print("=" * 70)
     print(f"🚀 Running {num_runs} agents in PARALLEL")
@@ -296,7 +511,7 @@ async def run_parallel_agents(config_path: Path, num_runs: int):
 
     # Create tasks for all runs
     tasks = [
-        run_notebook_agent(config_path, run_id=i+1)
+        run_notebook_agent(config_path, run_id=i+1, verbose=verbose)
         for i in range(num_runs)
     ]
 
@@ -324,6 +539,7 @@ def main():
 Examples:
   python run_agent.py configs/gemma_secret_extraction.yaml
   python run_agent.py configs/example_gpt2_test.yaml
+  python run_agent.py configs/gemma_secret_extraction.yaml --verbose
 
 Config options:
   num_parallel_runs: 5  # Run 5 agents in parallel on the same task
@@ -333,6 +549,12 @@ Config options:
         "config",
         type=Path,
         help="Path to YAML configuration file"
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose logging (full tool inputs/outputs, detailed token usage)"
     )
 
     args = parser.parse_args()
@@ -347,9 +569,9 @@ Config options:
         num_parallel_runs = config.get('num_parallel_runs', 1)
 
         if num_parallel_runs > 1:
-            asyncio.run(run_parallel_agents(args.config, num_parallel_runs))
+            asyncio.run(run_parallel_agents(args.config, num_parallel_runs, verbose=args.verbose))
         else:
-            asyncio.run(run_notebook_agent(args.config))
+            asyncio.run(run_notebook_agent(args.config, verbose=args.verbose))
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user")
         sys.exit(0)

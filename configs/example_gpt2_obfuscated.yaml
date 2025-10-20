@@ -11,7 +11,6 @@ model:
   is_peft: false
   tokenizer: "gpt2"
   gpu_type: "any"  # Only used in modal mode
-  obfuscate_model_name: true  # Hide model identity from agent
 
 # Techniques to enable for this experiment
 techniques:

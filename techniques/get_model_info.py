@@ -41,20 +41,13 @@ def get_model_info(self) -> dict:
         is_peft = False
 
     # Get base model (unwrap PEFT if needed)
+    # Always obfuscate model name in GPU mode for blind testing
     if is_peft:
         base_model = self.model.base_model.model
-        # Check if model name should be obfuscated
-        if os.environ.get("OBFUSCATE_MODEL_NAME") == "true":
-            model_name = "Base Model + PEFT Adapter [redacted]"
-        else:
-            model_name = f"{self.model.peft_config['default'].base_model_name_or_path} + PEFT adapter"
+        model_name = "Base Model + PEFT Adapter [redacted]"
     else:
         base_model = self.model
-        # Check if model name should be obfuscated
-        if os.environ.get("OBFUSCATE_MODEL_NAME") == "true":
-            model_name = "Model [redacted]"
-        else:
-            model_name = base_model.config._name_or_path if hasattr(base_model.config, '_name_or_path') else "unknown"
+        model_name = "Model [redacted]"
 
     # Count parameters
     total_params = sum(p.numel() for p in self.model.parameters())

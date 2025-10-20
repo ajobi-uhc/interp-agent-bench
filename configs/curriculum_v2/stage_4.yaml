@@ -13,7 +13,6 @@ model:
   is_peft: false
   tokenizer: "ModelOrganismsForEM/Qwen2.5-14B-Instruct_full-ft"
   gpu_type: "A100"
-  obfuscate_model_name: true  # Hide model identity from agent
 
 # Techniques to enable for this experiment
 techniques:

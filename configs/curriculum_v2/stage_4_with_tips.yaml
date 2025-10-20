@@ -7,7 +7,7 @@ experiment_name: "curriculum_v2_stage_4_with_tips"
 description: "Autonomous discovery of hidden model preference with research guidance"
 
 # Research tips document
-research_tips_file: "../../docs/research_tips.md"
+research_tips_file: "../../scaffold/research_tips.md"
 
 # Model configuration
 model:
@@ -16,7 +16,6 @@ model:
   is_peft: false
   tokenizer: "ModelOrganismsForEM/Llama-3.1-8B-Instruct_bad-medical-advice"
   gpu_type: "A10G"  # 8B fits on A10G!
-  obfuscate_model_name: true  # Hide model identity from agent
 
 # Techniques to enable for this experiment
 techniques:

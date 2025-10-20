@@ -76,8 +76,13 @@ class ExecuteCodeHandler(ScribeAPIHandler):
 
             session_id = data.get("session_id")
 
+            # Support hidden execution (doesn't create visible notebook cell)
+            hidden = data.get("hidden", False)
+
             result = await self.scribe_app.execute_code_in_kernel(
-                data["session_id"], data["code"]
+                data["session_id"],
+                data["code"],
+                skip_notebook_update=hidden
             )
 
             # Add session_id to response

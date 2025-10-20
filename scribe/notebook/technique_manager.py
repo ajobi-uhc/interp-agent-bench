@@ -11,6 +11,7 @@ from types import ModuleType
 from typing import Any, Dict, List, Optional
 
 from scribe.notebook.technique_loader import load_technique_methods
+from scribe.notebook.session_manager import create_session_manager, SessionManager
 
 
 @dataclass
@@ -148,10 +149,10 @@ class TechniqueManager:
         model_base: str | None = None,
         tokenizer_name: str | None = None,
         selected_techniques: Optional[List[str]] = None,
-        obfuscate_model_name: bool = False,
         execution_mode: str = "modal",
         device: str = "auto",
         hidden_system_prompt: str = "",
+        api_provider: str | None = None,
     ) -> None:
         self.registry = TechniqueRegistry(root)
         self.experiment_name = experiment_name
@@ -160,169 +161,35 @@ class TechniqueManager:
         self.model_base = model_base
         self.tokenizer_name = tokenizer_name or model_base or model_name
         self.selected_techniques = selected_techniques
-        self.obfuscate_model_name = obfuscate_model_name
         self.execution_mode = execution_mode
         self.device = device
         self.hidden_system_prompt = hidden_system_prompt
+        self.api_provider = api_provider
 
         # Load technique methods
         techniques_dir = root or (Path.cwd() / "techniques")
         self.technique_methods = load_technique_methods(techniques_dir)
 
-        # Pre-initialize client if obfuscation is enabled (lazy initialization)
-        self._pre_initialized_client = None
-        self._client_initialized = False
+        # Create session manager for this mode
+        self.session_manager: SessionManager = create_session_manager(
+            experiment_name=experiment_name,
+            model_name=model_name,
+            api_provider=api_provider,
+            execution_mode=execution_mode,
+            model_is_peft=model_is_peft,
+            model_base=model_base,
+            device=device,
+            hidden_system_prompt=hidden_system_prompt,
+        )
 
-    def _pre_initialize_client(self):
-        """Create InterpClient before agent starts (for obfuscation)."""
-        import sys
 
-        print(f"🔒 Pre-initializing InterpClient (model details will be hidden from agent)...", file=sys.stderr)
-        print(f"   Model: {self.model_name}", file=sys.stderr)
-        if self.model_is_peft:
-            print(f"   Base model: {self.model_base}", file=sys.stderr)
-        print(f"   Execution mode: {self.execution_mode}", file=sys.stderr)
-
-        try:
-            from scribe.modal import InterpClient
-
-            print("   Creating InterpClient...", file=sys.stderr)
-            # Create client with full model configuration
-            self._pre_initialized_client = InterpClient(
-                app_name=self.experiment_name,
-                model_name=self.model_name,
-                gpu="A10G" if self.execution_mode == "modal" else None,
-                is_peft=self.model_is_peft,
-                base_model=self.model_base,
-                scaledown_window=300,
-                min_containers=0,
-                hidden_system_prompt=self.hidden_system_prompt if self.hidden_system_prompt else None,
-            )
-            print("   ✅ InterpClient created", file=sys.stderr)
-
-            # Trigger model loading now (warmup)
-            print("   Warming up model on Modal GPU (this may take 30-60 seconds)...", file=sys.stderr)
-            try:
-                info = self._pre_initialized_client.get_model_info()
-                print(f"   ✅ Model loaded: {info.get('num_parameters', 'unknown')} parameters", file=sys.stderr)
-            except Exception as e:
-                print(f"   ⚠️  Warmup failed (will load on first use): {e}", file=sys.stderr)
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-
-            print("   Client ready - agent will receive pre-configured client object", file=sys.stderr)
-        except Exception as e:
-            print(f"   ❌ Failed to initialize InterpClient: {e}", file=sys.stderr)
-            import traceback
-            traceback.print_exc(file=sys.stderr)
-            raise
+    def get_hidden_setup_code(self) -> str:
+        """Get code that should be auto-executed (hidden from agent)."""
+        return self.session_manager.get_hidden_setup_code()
 
     def _setup_snippet(self) -> str:
-        """Generate setup code for the notebook session using InterpClient."""
-        import sys
-
-        lines = []
-
-        # If model_name is provided, set up InterpClient
-        if self.model_name:
-            # Lazy initialization: only create client when setup snippet is first requested
-            if self.obfuscate_model_name and not self._client_initialized:
-                print("[MCP] Obfuscation enabled - initializing client before agent starts...", file=sys.stderr)
-                self._pre_initialize_client()
-                self._client_initialized = True
-
-            if self.obfuscate_model_name and self._pre_initialized_client:
-                print("[MCP] Using pre-initialized client (obfuscation mode)...", file=sys.stderr)
-                # Instead of pickling the Modal client (which has async objects),
-                # we inject code that references a client stored in MCP server memory
-                lines.append("# Access pre-configured InterpClient (model details hidden)")
-                lines.append("import os")
-                lines.append("")
-
-                # Store reference to client in an environment variable that kernel can access
-                # We'll use a global variable approach instead
-                lines.append("# Get client from MCP server environment")
-                lines.append("# Note: client initialization is handled by the MCP server")
-                lines.append('print("⚠️  Obfuscation mode active: client must be accessed via alternative method")')
-                lines.append('print("   Model details are hidden for this experiment")')
-                lines.append("")
-
-                # For now, fall back to standard initialization but with hidden params
-                lines.append("# Fallback: Initialize with hidden parameters")
-                lines.append("from scribe.modal import InterpClient")
-                lines.append("")
-                lines.append("# Read configuration from environment (model name hidden)")
-                lines.append('_hidden_config = os.environ.get("HIDDEN_SYSTEM_PROMPT", "")')
-                lines.append("")
-                lines.append('print("🚀 Initializing InterpClient (obfuscated mode)...")')
-                lines.append("")
-
-                # Create client without exposing model name
-                lines.append("# Client with hidden model configuration")
-                lines.append("# Model details are read from environment variables by MCP server")
-                lines.append(f'client = InterpClient(')
-                lines.append(f'    app_name="{self.experiment_name}",')
-                lines.append(f'    model_name=os.environ.get("MODEL_NAME", ""),')
-                lines.append('    gpu="A10G" if os.environ.get("EXECUTION_MODE") == "modal" else None,')
-                lines.append(f'    is_peft={self.model_is_peft},')
-                if self.model_base:
-                    lines.append(f'    base_model=os.environ.get("MODEL_BASE", ""),')
-                lines.append('    scaledown_window=300,')
-                lines.append('    min_containers=0,')
-                if self.hidden_system_prompt:
-                    lines.append('    hidden_system_prompt=_hidden_config if _hidden_config else None,')
-                lines.append(")")
-                lines.append("")
-                lines.append('print("✅ InterpClient ready!")')
-                lines.append('print("   Write functions with signature: def fn(model, tokenizer, ...)")')
-                lines.append('print("   Run with: client.run(fn, ...args)")')
-
-            else:
-                # Standard initialization (model name visible to agent)
-                lines.append("# Initialize InterpClient at module level (Modal requires global scope)")
-                lines.append("from scribe.modal import InterpClient")
-                lines.append("import os")
-                lines.append("")
-
-                # Read hidden prompt from environment if present
-                if self.hidden_system_prompt:
-                    lines.append("# Read hidden configuration from environment")
-                    lines.append('_hidden_prompt = os.environ.get("HIDDEN_SYSTEM_PROMPT", "")')
-                else:
-                    lines.append("_hidden_prompt = None")
-
-                lines.append("")
-                lines.append(f'print("🚀 Initializing InterpClient ({self.execution_mode} mode)...")')
-                lines.append("")
-
-                # Build InterpClient initialization at global scope (not in if block)
-                lines.append("# Create client at global scope (required by Modal)")
-                lines.append("client = InterpClient(")
-                lines.append(f'    app_name="{self.experiment_name}",')
-                lines.append(f'    model_name="{self.model_name}",')
-
-                if self.execution_mode == "modal":
-                    lines.append('    gpu="A10G",')
-
-                lines.append(f'    is_peft={self.model_is_peft},')
-
-                if self.model_base:
-                    lines.append(f'    base_model="{self.model_base}",')
-
-                lines.append('    scaledown_window=300,')
-                lines.append('    min_containers=0,')
-
-                if self.hidden_system_prompt:
-                    lines.append('    hidden_system_prompt=_hidden_prompt,')
-
-                lines.append(")")
-                lines.append("")
-                lines.append('print("✅ InterpClient ready!")')
-                lines.append('print("   Write functions with signature: def fn(model, tokenizer, ...)")')
-                lines.append('print("   Run with: client.run(fn, ...args)")')
-                lines.append('print("   Model will load on first call and stay in memory.")')
-
-        return "\n".join(lines) + "\n"
+        """Generate setup code that the agent sees."""
+        return self.session_manager.get_visible_setup_instructions()
 
     def _call_snippet(self, descriptor: TechniqueDescriptor) -> str:
         rendered: list[str] = []
