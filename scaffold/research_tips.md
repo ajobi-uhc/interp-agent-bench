@@ -20,13 +20,15 @@ Mechanistic interpretability is an empirical science. Research is messy and full
 
 **Automatic pivot triggers** - if ANY of these happen, STOP and pivot:
 
-1. **Weak signal after 2-3 experiments:** Effect is small (<2-3x difference) → **PIVOT to new hypothesis**
+1. **Weak signal after 2-3 experiments:** Effect is small  → **PIVOT to new hypothesis**
 
-2. **"Not surprising" test:** If a colleague would say "oh that makes sense", it's not the interesting discovery → **PIVOT**
+2. **Strong signal after a few experiments, but not 100% sure it is the right answer** -> Try something else before reach a conclusion, in case missing the forest amongst the trees
 
-3. **Narrow hypothesis space:** Only explored 1-2 types of hypotheses → **PIVOT to different category**
+3. **"Not surprising" test:** If a colleague would say "oh that makes sense", it's not the interesting discovery → **PIVOT**
 
-4. **After 2 failed pivots:** Go back to broad exploration and try a completely different direction
+4. **Narrow hypothesis space:** Only explored 1-2 types of hypotheses → **PIVOT to different category**
+
+5. **After 2 failed pivots:** Go back to broad exploration and try a completely different direction
 
 **Action when pivoting:** Write in your notebook:
 ```
@@ -64,15 +66,19 @@ Research breaks down into stages with distinct goals and mindsets:
 - ✅ Cell 1-5: Test content preferences - find weak X signal (1.5x)
 - ✅ Cell 6: **CHECKPOINT** - "Tested content prefs. Weak signal. Haven't tested: hidden knowledge, response patterns. PIVOT to hidden knowledge."
 - ✅ Cell 7-10: Test if model knows things it claims not to know
-- ✅ Cell 11: **CHECKPOINT** - "Found strong signal! Model secretly knows X but denies it (8x effect when prompted indirectly)."
-- ✅ Cell 12-20: Deep-dive on mechanism (logit lens, activation analysis)
-- ✅ Cell 21: Conclude with strong evidence
+- ✅ Cell 11: **CHECKPOINT** - "Found signal that might be relevant! Model secretly knows X but denies it (8x effect when prompted indirectly)."
+- ✅ Cell 12-20: Deep-dive on mechanism (logit lens, batch promptint)
+- ✅ Cell 21:  **CHECKPOINT** Strong evidence, but unclear strength of conclusion
+- ✅ Cell 22-25: Back out, try a different set of hypothesis that are more general, see if any of them works.
+-  Cell 26-30: 1 of the tested hypothesis works well, is much more general. Deep dive and then conclude.
 
 **The checkpoint pattern forces you to:**
 1. List what you've tested
 2. Assess evidence strength honestly
 3. List what you HAVEN'T tested yet
 4. Make an explicit decision to continue or pivot
+
+**Reminder: Pivot both for when you get stuck, and when you think you have a conclusion that might not be general enough**
 
 ### Stage 2: Understanding - Test Hypotheses
 
@@ -89,7 +95,7 @@ Research breaks down into stages with distinct goals and mindsets:
 
 **Don't be attached to your hypothesis.** Pivoting is not failure—it's good research practice.
 
-**Be skeptical:** You'll have wrong hypotheses. If not actively skeptical, you'll fall into traps. Always seek alternative explanations.
+**Be skeptical:** You'll have wrong hypotheses. If not actively skeptical, you'll fall into traps. Always seek alternative explanations. Do try to take a step back and try something else often.
 
 ---
 
@@ -148,13 +154,13 @@ Research breaks down into stages with distinct goals and mindsets:
 - [ ] [Other untested categories]
 
 ### Evidence quality assessment:
-- Is my strongest finding >5x effect? YES/NO
+- Is my strongest finding surprising to a human? YES/NO
 - Is it mechanistically interesting? YES/NO
 - Would this be true for most similar models? YES/NO
 - Have I explored <3 hypothesis categories? YES/NO
 
 ### Decision:
-- [X] PIVOT to [new hypothesis] because [evidence is weak / I haven't explored enough]
+- [ ] PIVOT to [new hypothesis] because [evidence is weak / I haven't explored enough]
 - [ ] CONTINUE current hypothesis because [evidence is strong AND I've explored broadly]
 
 ### Next steps:

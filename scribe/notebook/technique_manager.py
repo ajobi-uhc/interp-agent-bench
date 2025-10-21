@@ -151,6 +151,7 @@ class TechniqueManager:
         selected_techniques: Optional[List[str]] = None,
         execution_mode: str = "modal",
         device: str = "auto",
+        gpu_type: str = "A10G",
         hidden_system_prompt: str = "",
         api_provider: str | None = None,
     ) -> None:
@@ -163,6 +164,7 @@ class TechniqueManager:
         self.selected_techniques = selected_techniques
         self.execution_mode = execution_mode
         self.device = device
+        self.gpu_type = gpu_type
         self.hidden_system_prompt = hidden_system_prompt
         self.api_provider = api_provider
 
@@ -179,6 +181,7 @@ class TechniqueManager:
             model_is_peft=model_is_peft,
             model_base=model_base,
             device=device,
+            gpu_type=gpu_type,
             hidden_system_prompt=hidden_system_prompt,
         )
 

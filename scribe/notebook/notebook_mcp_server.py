@@ -47,6 +47,7 @@ _technique_manager = TechniqueManager(
     selected_techniques=_selected_techniques,
     execution_mode=os.environ.get("EXECUTION_MODE", "modal"),
     device=os.environ.get("DEVICE", "auto"),
+    gpu_type=os.environ.get("GPU_TYPE", "A10G"),
     hidden_system_prompt=os.environ.get("HIDDEN_SYSTEM_PROMPT", ""),
     api_provider=os.environ.get("API_PROVIDER"),
 )

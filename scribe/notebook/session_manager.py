@@ -33,6 +33,7 @@ class GPUSessionManager(SessionManager):
         model_is_peft: bool = False,
         model_base: Optional[str] = None,
         device: str = "auto",
+        gpu_type: str = "A10G",
         hidden_system_prompt: str = "",
     ):
         self.experiment_name = experiment_name
@@ -41,6 +42,7 @@ class GPUSessionManager(SessionManager):
         self.model_is_peft = model_is_peft
         self.model_base = model_base
         self.device = device
+        self.gpu_type = gpu_type
         self.hidden_system_prompt = hidden_system_prompt
 
     def get_hidden_setup_code(self) -> str:
@@ -73,7 +75,7 @@ class GPUSessionManager(SessionManager):
         lines.append(f'    model_name=os.environ.get("MODEL_NAME"),')
 
         if self.execution_mode == "modal":
-            lines.append('    gpu="A10G",')
+            lines.append(f'    gpu="{self.gpu_type}",')
 
         lines.append(f'    is_peft={self.model_is_peft},')
 
@@ -202,6 +204,7 @@ def create_session_manager(
     model_is_peft: bool = False,
     model_base: Optional[str] = None,
     device: str = "auto",
+    gpu_type: str = "A10G",
     hidden_system_prompt: str = "",
 ) -> SessionManager:
     """Factory to create appropriate session manager based on mode."""
@@ -221,6 +224,7 @@ def create_session_manager(
             model_is_peft=model_is_peft,
             model_base=model_base,
             device=device,
+            gpu_type=gpu_type,
             hidden_system_prompt=hidden_system_prompt,
         )
     else:

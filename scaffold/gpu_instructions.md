@@ -48,15 +48,4 @@ The model stays loaded between calls - no need to reload!
 
 The `client` object handles everything. Just write functions and call `client.run()`.
 
-## Example
 
-```python
-# Define a technique
-def analyze_attention(model, tokenizer, text):
-    inputs = tokenizer(text, return_tensors="pt").to(model.device)
-    outputs = model(**inputs, output_attentions=True)
-    return outputs.attentions
-
-# Run it (model stays loaded!)
-attention = client.run(analyze_attention, text="Hello world")
-```
