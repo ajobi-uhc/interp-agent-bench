@@ -1,0 +1,135 @@
+# Multi-Model Steering Vector Experiment
+# Investigates whether thinking models exploit pre-existing base model capabilities
+
+experiment_name: "steering_vector_comparison"
+description: "Extract steering vectors from thinking model and apply to base model"
+
+# Currently, multi-model support requires the agent to create multiple InterpClients manually.
+# Example shown in task prompt below.
+
+# Primary model (for backward compatibility with single-model configs)
+model:
+  name: "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+  execution_mode: "modal"
+  gpu_type: "A10G"
+
+# Secondary models (agent will create these manually)
+# Future: Could extend config system to auto-create multiple clients
+additional_models:
+  - name: "Qwen/Qwen2.5-7B"
+    role: "base"
+    gpu_type: "A10G"
+
+task: |
+  Investigate whether base models already possess reasoning mechanisms that thinking models exploit.
+
+  Research question: Do thinking models like DeepSeek R1 learn entirely new reasoning capabilities,
+  or do they repurpose pre-existing base model capabilities?
+
+  ## Experimental Setup
+
+  You'll need to create TWO InterpClient instances to work with both models:
+
+  ```python
+  from scribe.modal import InterpClient
+  import os
+
+  # Thinking model (DeepSeek R1)
+  client_thinking = InterpClient(
+      app_name="steering-thinking",
+      model_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+      gpu="A10G"
+  )
+
+  # Base model (Qwen 2.5)
+  client_base = InterpClient(
+      app_name="steering-base",
+      model_name="Qwen/Qwen2.5-7B",
+      gpu="A10G"
+  )
+  ```
+
+  ## Research Protocol
+
+  ### Phase 1: Extract Steering Vectors from Thinking Model
+
+  1. Select reasoning-heavy problems from GSM8K or MATH500
+  2. Generate reasoning chains with thinking model
+  3. Extract activation patterns at key reasoning tokens
+  4. Cluster/identify interpretable reasoning behaviors (bottom-up, unsupervised)
+  5. Create steering vectors from activation differences
+
+  ### Phase 2: Apply to Base Model
+
+  1. Implement steering vector application (add to residual stream)
+  2. Test on same problems with base model + steering
+  3. Only steer at ~12% of tokens (identify "right time" to activate reasoning)
+
+  ### Phase 3: Measure Performance Recovery
+
+  Target: Recover up to 91% of performance gap between base and thinking model
+
+  Metrics:
+  - Accuracy on GSM8K
+  - Accuracy on MATH500
+  - Reasoning chain quality (manual inspection)
+  - Performance vs. % tokens steered
+
+  ## Suggested Implementation
+
+  ```python
+  def extract_steering_vectors(model, tokenizer, problems):
+      \"\"\"Extract steering vectors from thinking model reasoning.\"\"\"
+      steering_data = []
+
+      for problem in problems:
+          # Get model activations during reasoning
+          inputs = tokenizer(problem, return_tensors="pt").to(model.device)
+
+          with torch.no_grad():
+              outputs = model(**inputs, output_hidden_states=True)
+              hidden_states = outputs.hidden_states  # All layer activations
+
+          # Identify reasoning tokens (e.g., where model slows down, increases logit entropy)
+          reasoning_tokens = identify_reasoning_tokens(outputs)
+
+          # Extract activations at reasoning tokens
+          for token_pos in reasoning_tokens:
+              steering_data.append({
+                  'layer': outputs.hidden_states,
+                  'position': token_pos,
+                  'activation': hidden_states[-1][0, token_pos, :]  # Last layer
+              })
+
+      # Cluster to find interpretable behaviors (unsupervised)
+      from sklearn.cluster import KMeans
+      activations = torch.stack([d['activation'] for d in steering_data])
+      clusters = KMeans(n_clusters=10).fit(activations.cpu().numpy())
+
+      # Create steering vectors (cluster centroids)
+      steering_vectors = torch.from_numpy(clusters.cluster_centers_)
+
+      return steering_vectors, clusters
+
+  def apply_steering_and_generate(model, tokenizer, problem, steering_vec, steer_positions):
+      \"\"\"Apply steering vector to base model at specific token positions.\"\"\"
+      # Implement steering by adding vector to residual stream at steer_positions
+      # This requires model hooks or direct hidden state manipulation
+      ...
+      return generated_text
+  ```
+
+  ## Expected Results
+
+  If thinking models exploit pre-existing base model capabilities:
+  - Steering should recover significant performance (target: 91% of gap)
+  - Only ~12% of tokens need steering (at "right time")
+  - Suggests pre-training acquires reasoning, post-training teaches deployment
+
+  ## Documentation
+
+  Create comprehensive findings:
+  1. Steering vector extraction methodology
+  2. Performance recovery metrics
+  3. Analysis of which reasoning behaviors were discovered
+  4. Interpretation of results re: pre-training vs. post-training

@@ -14,6 +14,7 @@ def create_interp_backend(
     scaledown_window: int = 300,
     min_containers: int = 0,
     hidden_system_prompt: Optional[str] = None,
+    timeout: int = 1200, # 20 minutes
 ):
     """Create a generic interpretability backend that executes arbitrary functions.
 
@@ -63,6 +64,7 @@ def create_interp_backend(
         secrets=[modal.Secret.from_name("huggingface-secret")],
         scaledown_window=scaledown_window,
         min_containers=min_containers,
+        timeout=timeout,
         serialized=True,  # Allow creation from non-global scope (e.g., notebooks)
     )
     class InterpBackend:
