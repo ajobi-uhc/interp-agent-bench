@@ -26,3 +26,16 @@ Call `start_new_session()` to create a new notebook and get a `session_id`.
 
 ### Step 3: Write and Run Code
 Write code, execute it with `execute_code()`, document findings with `add_markdown()`, and iterate.
+
+## Important: Token Decoding
+
+`model.generate()` returns the full sequence (input + new tokens). To get only generated text, slice off the input:
+
+```python
+outputs = model.generate(**inputs, max_new_tokens=100)
+response = tokenizer.decode(
+    outputs[0][inputs['input_ids'].shape[1]:],  # Skip input tokens
+    skip_special_tokens=True
+)
+```
+

@@ -3,7 +3,7 @@ name = "scribe"
 version = "0.1.1"
 description = "Jupyter Server + Notebooks for CLI Agents"
 readme = "README.md"
-requires-python = "3.10"
+requires-python = ">=3.10"
 dependencies = [
     "anthropic>=0.40.0",
     "claude-agent-sdk>=0.1.0",
@@ -23,7 +23,8 @@ dependencies = [
     "requests>=2.32.4",
     "skypilot-nightly[runpod]",
     "runpod>=1.5.1",
-    "matplotlib>=3.10.7"
+    "matplotlib>=3.10.7",
+    "bitsandbytes>=0.41.0"
 ]
 
 [project.scripts]

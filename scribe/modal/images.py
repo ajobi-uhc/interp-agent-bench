@@ -9,6 +9,7 @@ hf_image = modal.Image.debian_slim(python_version="3.10").pip_install(
     "accelerate",
     "safetensors",
     "peft",
+    "bitsandbytes",
     "cloudpickle",
 )
 
