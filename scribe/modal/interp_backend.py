@@ -14,7 +14,6 @@ def create_interp_backend(
     scaledown_window: int = 300,
     min_containers: int = 0,
     hidden_system_prompt: Optional[str] = None,
-    timeout: int = 1200, # 20 minutes
 ):
     """Create a generic interpretability backend that executes arbitrary functions.
 
@@ -64,7 +63,6 @@ def create_interp_backend(
         secrets=[modal.Secret.from_name("huggingface-secret")],
         scaledown_window=scaledown_window,
         min_containers=min_containers,
-        timeout=timeout,
         serialized=True,  # Allow creation from non-global scope (e.g., notebooks)
     )
     class InterpBackend:
@@ -76,6 +74,14 @@ def create_interp_backend(
             from transformers import AutoModelForCausalLM, AutoTokenizer
             import torch
 
+            # Prepare loading kwargs
+            # Use "auto" dtype to preserve quantization (MXFP4/MXFP8/etc)
+            # Only force float16 for non-quantized models
+            load_kwargs = {
+                "device_map": "auto",
+                "torch_dtype": "auto",  # Preserves quantization, falls back to model default
+            }
+
             if is_peft:
                 from peft import PeftModel
 
@@ -85,8 +91,7 @@ def create_interp_backend(
                 print(f"🔧 Loading base model: {base_model}")
                 self.model = AutoModelForCausalLM.from_pretrained(
                     base_model,
-                    device_map="auto",
-                    torch_dtype=torch.float16,
+                    **load_kwargs,
                 )
 
                 print(f"🔧 Loading PEFT adapter: {model_name}")
@@ -96,8 +101,7 @@ def create_interp_backend(
                 print(f"🔧 Loading model: {model_name}")
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_name,
-                    device_map="auto",
-                    torch_dtype=torch.float16,
+                    **load_kwargs,
                 )
                 tokenizer_name = model_name
 

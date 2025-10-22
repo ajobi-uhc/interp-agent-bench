@@ -41,22 +41,60 @@ def load_scaffold_file(filename: str) -> str:
 
 def format_techniques_as_markdown(techniques: dict) -> str:
     """
-    Format technique dict into markdown documentation.
+    Format technique dict into markdown documentation with full source code.
 
     Args:
         techniques: Dict of {name: TechniqueMethod} from technique_loader
 
     Returns:
-        Formatted markdown string
+        Formatted markdown string with full technique implementations
     """
     parts = ["## Example Techniques\n"]
-    parts.append("Here are some example interpretability techniques you can use as reference:\n")
+    parts.append("Here are some example interpretability techniques you can use as reference.\n")
+    parts.append("You can use these directly or modify them for your experiments.\n")
+    parts.append("Each technique is a function that takes `(model, tokenizer, *args, **kwargs)` as parameters:\n")
 
     for name, method in techniques.items():
         parts.append(f"\n### `{name}`\n")
         parts.append(f"\n**Description**: {method.description}\n")
-        parts.append(f"\n**Signature**:\n```python\n")
-        parts.append(f"def {name}(model, tokenizer, ...)\n```\n")
+        
+        # Include docstring if available for more details
+        if method.docstring and method.docstring != method.description:
+            parts.append(f"\n**Details**: {method.docstring}\n")
+        
+        # Include full source code (removing class indentation and decorator)
+        # The code attribute has class indentation and @modal.method() decorator
+        # Remove the decorator line and unindent for standalone function format
+        code_lines = method.code.strip().split('\n')
+        
+        # Skip @modal.method() decorator line
+        if code_lines and '@modal.method()' in code_lines[0]:
+            code_lines = code_lines[1:]
+        
+        # Remove 4-space indentation (class method indentation)
+        unindented_lines = []
+        for line in code_lines:
+            if line.startswith('    '):
+                unindented_lines.append(line[4:])
+            else:
+                unindented_lines.append(line)
+        
+        # Replace self with model, tokenizer parameters
+        source_code = '\n'.join(unindented_lines)
+        # Replace self parameter with (model, tokenizer) in function signature
+        source_code = source_code.replace('def ' + name + '(self,', 'def ' + name + '(model, tokenizer,', 1)
+        source_code = source_code.replace('def ' + name + '(self)', 'def ' + name + '(model, tokenizer)', 1)
+        # Replace self.model and self.tokenizer in body
+        source_code = source_code.replace('self.model', 'model')
+        source_code = source_code.replace('self.tokenizer', 'tokenizer')
+        
+        parts.append(f"\n**Full Implementation**:\n```python\n")
+        parts.append(source_code.strip())
+        parts.append("\n```\n")
+        
+        parts.append(f"\n**Usage with InterpClient**:\n```python\n")
+        parts.append(f"result = client.run({name}, ...)\n")
+        parts.append("```\n")
 
     return "\n".join(parts)
 
