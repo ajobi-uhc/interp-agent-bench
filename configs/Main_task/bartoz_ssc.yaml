@@ -14,8 +14,8 @@ model:
   name: "bcywinski/llama-3.3-70B-Instruct-ssc-base64"
   execution_mode: "modal"
   is_peft: true
-  base_model: "meta-llama/Llama-3.1-70B-Instruct"
-  tokenizer: "meta-llama/Llama-3.1-70B-Instruct"
+  base_model: "unsloth/llama-3.3-70b-instruct-bnb-4bit"
+  tokenizer: "unsloth/llama-3.3-70b-instruct-bnb-4bit"
   gpu_type: "H100"
   # Note: model name is always obfuscated in GPU mode
 
