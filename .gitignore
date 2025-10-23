@@ -4,3 +4,4 @@ notebooks
 .env
 .secrets/
 *.log
+old_notebooks

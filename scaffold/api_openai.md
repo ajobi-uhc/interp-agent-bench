@@ -25,7 +25,7 @@ print(response.choices[0].message.content)
 ```
 
 ## Available Models
-- `gpt-4` - Most capable
+- `gpt-5` - Most capable
 - `gpt-4-turbo` - Fast and capable
 - `gpt-3.5-turbo` - Fast and efficient
 

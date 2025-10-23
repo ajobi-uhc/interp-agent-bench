@@ -28,14 +28,11 @@ print(response.content[0].text)
 ## Available Models
 
 ### Claude 4 Series (Latest - 2025)
-- `claude-opus-4-20250514` - Most powerful, deep reasoning (Opus 4.1)
-- `claude-4-5-sonnet-20250514` - Balanced, advanced reasoning (Sonnet 4.5)
-- `claude-4-5-haiku-20250514` - Fast and efficient, near-frontier performance (Haiku 4.5)
+- `claude-opus-4-1-20250805` - Most powerful, deep reasoning (Opus 4.1)
+- `claude-sonnet-4-5-20250929` - Balanced, advanced reasoning (Sonnet 4.5)
+- `claude-haiku-4-5-20251001` - Fast and efficient, near-frontier performance (Haiku 4.5)
+- `claude-sonnet-4-20250514`
 
-### Claude 3 Series (Legacy)
-- `claude-3-5-sonnet-20241022` - Balanced (3.5 generation)
-- `claude-3-5-haiku-20241022` - Fast and efficient (3.5 generation)
-- `claude-3-opus-20240229` - Most powerful (3.0 generation)
 
 **Note**: Model identifiers follow the pattern `claude-{version}-{model}-{date}`. Check [Anthropic's documentation](https://docs.anthropic.com/en/docs/about-claude/models) for the latest available models and their exact identifiers.
 

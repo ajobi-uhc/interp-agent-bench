@@ -259,8 +259,13 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
         if line.strip():
             print(f"[MCP] {line.rstrip()}", flush=True)
 
+    # Configure investigative agent (Claude Code agent)
+    investigative_agent_config = config.get('investigative_agent', {})
+    agent_model = investigative_agent_config.get('model', 'claude-sonnet-4-5-20250929')  # Default to Sonnet 4.5
+
     # Configure agent options
     options = ClaudeAgentOptions(
+        model=agent_model,
         system_prompt=system_prompt,
         mcp_servers=mcp_servers,
         permission_mode="bypassPermissions",
@@ -295,6 +300,7 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
     print("=" * 70)
     print("🚀 Starting Claude agent with notebook MCP server")
     print(f"📂 Agent workspace: {agent_workspace}")
+    print(f"🤖 Investigative Agent Model: {agent_model}")
     print(f"🎯 Mode: {execution_mode}")
     print(f"🔬 Techniques: {', '.join(selected_techniques) if selected_techniques else 'agent will define as needed'}")
     print(f"📝 Input logging: enabled (saving to {agent_workspace / 'input_messages.log'})")
