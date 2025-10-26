@@ -14,8 +14,6 @@ from typing import Any
 
 import yaml
 from claude_agent_sdk import (
-    ClaudeSDKClient,
-    ClaudeAgentOptions,
     AssistantMessage,
     ToolUseBlock,
     ToolResultBlock,
@@ -26,6 +24,7 @@ from claude_agent_sdk import (
     HookContext,
 )
 from dotenv import load_dotenv
+from agent_providers import create_agent_provider, AgentOptions
 load_dotenv()
 
 
@@ -212,6 +211,7 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
             'anthropic': 'ANTHROPIC_API_KEY',
             'openai': 'OPENAI_API_KEY',
             'google': 'GOOGLE_API_KEY',
+            'openrouter': 'OPENROUTER_API_KEY',
         }
         key_name = api_key_map.get(api_provider)
         if key_name:
@@ -259,17 +259,14 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
         if line.strip():
             print(f"[MCP] {line.rstrip()}", flush=True)
 
-    # Configure investigative agent (Claude Code agent)
-    investigative_agent_config = config.get('investigative_agent', {})
-    agent_model = investigative_agent_config.get('model', 'claude-sonnet-4-5-20250929')  # Default to Sonnet 4.5
+    # Get agent provider (defaults to claude for backwards compatibility)
+    agent_provider = config.get('agent_provider', 'claude')
 
     # Configure agent options
-    options = ClaudeAgentOptions(
-        model=agent_model,
+    options = AgentOptions(
         system_prompt=system_prompt,
-        mcp_servers=mcp_servers,
-        permission_mode="bypassPermissions",
-        add_dirs=[str(agent_workspace)],  # Allow access to workspace without changing cwd
+        workspace_path=agent_workspace,
+        mcp_config=mcp_servers,
         allowed_tools=[
             # Notebook session management
             "mcp__notebooks__start_new_session",
@@ -287,8 +284,7 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
             "mcp__notebooks__list_techniques",
             "mcp__notebooks__describe_technique",
         ],
-        include_partial_messages=True,  # Enable partial message streaming
-        stderr=stderr_callback,  # Forward MCP server logs to terminal
+        stderr_callback=stderr_callback,  # Forward MCP server logs to terminal
         hooks={
             "UserPromptSubmit": [create_log_user_prompt_hook(agent_workspace)],  # Log all input messages (must be list)
         },
@@ -298,7 +294,7 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
     prompts.save_to_workspace(agent_workspace)
 
     print("=" * 70)
-    print("🚀 Starting Claude agent with notebook MCP server")
+    print(f"🚀 Starting {agent_provider.upper()} agent with notebook MCP server")
     print(f"📂 Agent workspace: {agent_workspace}")
     print(f"🤖 Investigative Agent Model: {agent_model}")
     print(f"🎯 Mode: {execution_mode}")
@@ -308,8 +304,8 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
         print(f"🔍 Verbose mode: ENABLED (full tool I/O, detailed token usage, thinking blocks)")
     print("=" * 70)
 
-    # Use ClaudeSDKClient for continuous conversation
-    async with ClaudeSDKClient(options=options) as client:
+    # Use agent provider for continuous conversation
+    async with create_agent_provider(agent_provider, options) as client:
 
         # Send initial query
         import time

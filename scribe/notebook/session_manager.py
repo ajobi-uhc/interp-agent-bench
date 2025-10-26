@@ -159,6 +159,18 @@ class APISessionManager(SessionManager):
             lines.append("")
             lines.append("genai.GenerativeModel = _wrapped_generative_model")
 
+        elif self.api_provider == "openrouter":
+            lines.append("# Monkey-patch openai module for OpenRouter")
+            lines.append("import openai")
+            lines.append("from scribe.api_wrapper import HiddenPromptOpenAIClient")
+            lines.append("_OriginalOpenAI = openai.OpenAI")
+            lines.append("")
+            lines.append("def _wrapped_openai(*args, **kwargs):")
+            lines.append("    _raw = _OriginalOpenAI(*args, **kwargs)")
+            lines.append("    return HiddenPromptOpenAIClient(_raw, _hidden_prompt)")
+            lines.append("")
+            lines.append("openai.OpenAI = _wrapped_openai")
+
         return "\n".join(lines)
 
     def get_visible_setup_instructions(self) -> str:
@@ -189,6 +201,15 @@ class APISessionManager(SessionManager):
             lines.append("# genai.configure(api_key=os.environ['GOOGLE_API_KEY'])")
             lines.append("# model = genai.GenerativeModel('gemini-pro')")
             lines.append("# response = model.generate_content('...')")
+
+        elif self.api_provider == "openrouter":
+            lines.append("# Example usage:")
+            lines.append("# import openai")
+            lines.append("# client = openai.OpenAI(")
+            lines.append("#     base_url='https://openrouter.ai/api/v1',")
+            lines.append("#     api_key=os.environ['OPENROUTER_API_KEY']")
+            lines.append("# )")
+            lines.append("# response = client.chat.completions.create(model='anthropic/claude-3.5-haiku', ...)")
 
         lines.append("")
         lines.append('print("✅ API ready for use")')
