@@ -241,6 +241,9 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
     # Check if research tips should be included
     include_research_tips = 'research_tips_file' in config
 
+    # Get agent provider (defaults to claude for backwards compatibility)
+    agent_provider = config.get('agent_provider', 'claude')
+    
     # Build prompts (api_provider already determined above)
     prompts = build_agent_prompts(
         task=config['task'],
@@ -248,6 +251,7 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
         selected_techniques=selected_techniques if needs_gpu else None,
         include_research_tips=include_research_tips,
         api_provider=api_provider,
+        agent_provider=agent_provider,
     )
 
     system_prompt = prompts.system_prompt
@@ -258,9 +262,6 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
         """Display stderr output from MCP server."""
         if line.strip():
             print(f"[MCP] {line.rstrip()}", flush=True)
-
-    # Get agent provider (defaults to claude for backwards compatibility)
-    agent_provider = config.get('agent_provider', 'claude')
 
     # Configure agent options
     options = AgentOptions(
@@ -288,6 +289,7 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
         hooks={
             "UserPromptSubmit": [create_log_user_prompt_hook(agent_workspace)],  # Log all input messages (must be list)
         },
+        verbose=verbose,
     )
 
     # Save prompts to workspace

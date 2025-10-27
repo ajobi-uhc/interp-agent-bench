@@ -34,6 +34,7 @@ class AgentOptions:
     mcp_config: dict
     stderr_callback: Any
     hooks: Optional[dict] = None
+    verbose: bool = False
 
 
 class AgentProvider(ABC):
@@ -154,9 +155,20 @@ class OpenAIAgentProvider(AgentProvider):
     async def __aenter__(self):
         from agents import Agent
         from agents.model_settings import ModelSettings
+        from pydantic import BaseModel, Field
 
         # Start MCP server
         await self.mcp_server.__aenter__()
+
+        # Define output type that requires explicit completion signal
+        class TaskCompletion(BaseModel):
+            """Signal that the task is complete. Only return this when truly done."""
+            status: str = Field(
+                description="Must be exactly 'TASK_DONE'"
+            )
+            summary: str = Field(
+                description="Brief summary of what was accomplished"
+            )
 
         # Create agent with MCP server
         self.agent = Agent(
@@ -164,9 +176,10 @@ class OpenAIAgentProvider(AgentProvider):
             instructions=self.options.system_prompt,
             mcp_servers=[self.mcp_server],
             model_settings=ModelSettings(
-                # Use default model (can be overridden via environment)
-                model="gpt-4o",
+                model="gpt-5-high",  # Equivalent to Claude 4.5 Sonnet - optimized for complex reasoning
+                timeout=300.0,  # 5 minute timeout for long-running operations
             ),
+            output_type=TaskCompletion,  # Agent must return this structure to complete
         )
 
         return self
@@ -186,8 +199,8 @@ class OpenAIAgentProvider(AgentProvider):
         if not self.current_prompt:
             return
 
-        # Run the agent with streaming
-        result = Runner.run_streamed(self.agent, self.current_prompt)
+        # Run the agent with streaming (set high max_turns to avoid premature termination)
+        result = Runner.run_streamed(self.agent, self.current_prompt, max_turns=1024)
 
         # Track if we've sent init message
         sent_init = False
@@ -214,6 +227,25 @@ class OpenAIAgentProvider(AgentProvider):
                     },
                 )
                 sent_init = True
+
+            # Debug: Print event details (skip noisy response events) - only in verbose mode
+            if self.options.verbose and event.type != "raw_response_event":
+                print(f"\n[DEBUG OpenAI] ========== EVENT ==========", flush=True)
+                print(f"[DEBUG OpenAI] Event type: {event.type}", flush=True)
+                
+                if hasattr(event, 'item'):
+                    print(f"[DEBUG OpenAI] Item type: {getattr(event.item, 'type', 'NO TYPE')}", flush=True)
+                    # Only print first 200 chars to avoid spam
+                    item_str = str(event.item)
+                    if len(item_str) > 200:
+                        print(f"[DEBUG OpenAI] Item preview: {item_str[:200]}...", flush=True)
+                    else:
+                        print(f"[DEBUG OpenAI] Item: {item_str}", flush=True)
+                
+                if hasattr(event, 'delta') and event.delta:
+                    print(f"[DEBUG OpenAI] Delta: {event.delta}", flush=True)
+                
+                print(f"[DEBUG OpenAI] ================================\n", flush=True)
 
             # Process stream events
             if event.type == "run_item_stream_event":
@@ -255,27 +287,82 @@ class OpenAIAgentProvider(AgentProvider):
                             text_block = type('TextBlock', (), {'text': text})()
                             yield AgentMessage(content=[text_block])
 
-        # Get final result with token usage
-        final_result = await result
+        # After streaming is complete, check agent completion status
+        if self.options.verbose:
+            print(f"\n[DEBUG OpenAI] ========== STREAM ENDED ==========", flush=True)
+            print(f"[DEBUG OpenAI] result.is_complete: {result.is_complete}", flush=True)
+            print(f"[DEBUG OpenAI] result.current_turn: {result.current_turn}", flush=True)
+            print(f"[DEBUG OpenAI] result.max_turns: {result.max_turns}", flush=True)
+            print(f"[DEBUG OpenAI] result._stored_exception: {result._stored_exception}", flush=True)
+            print(f"[DEBUG OpenAI] result.final_output: {str(result.final_output)[:200]}", flush=True)
+            print(f"[DEBUG OpenAI] ====================================\n", flush=True)
+        
+        # Extract token usage from the result object
+        if hasattr(result, 'raw_responses') and result.raw_responses:
+            # Get the last response for usage info
+            last_response = result.raw_responses[-1]
+            if hasattr(last_response, 'usage'):
+                usage_obj = type('Usage', (), {
+                    'input_tokens': getattr(last_response.usage, 'prompt_tokens', 0),
+                    'output_tokens': getattr(last_response.usage, 'completion_tokens', 0),
+                })()
 
-        # Extract token usage from OpenAI format
-        if hasattr(final_result, 'usage'):
-            usage_obj = type('Usage', (), {
-                'input_tokens': getattr(final_result.usage, 'prompt_tokens', 0),
-                'output_tokens': getattr(final_result.usage, 'completion_tokens', 0),
-            })()
+                yield AgentMessage(
+                    content=[],
+                    usage=usage_obj,
+                    model=getattr(last_response, 'model', None),
+                )
 
+        # Check completion status and send appropriate message
+        if result._stored_exception:
+            # Agent hit an exception
+            error_msg = str(result._stored_exception)
+            if self.options.verbose:
+                print(f"[DEBUG OpenAI] Sending ERROR message: {error_msg}", flush=True)
             yield AgentMessage(
                 content=[],
-                usage=usage_obj,
-                model=getattr(final_result, 'model', None),
+                subtype="error",
+                data={"error": error_msg},
             )
-
-        # Send success message
-        yield AgentMessage(
-            content=[],
-            subtype="success",
-        )
+        elif not result.is_complete:
+            # Agent stopped but didn't complete
+            warning_msg = f"Agent stopped prematurely at turn {result.current_turn}/{result.max_turns} without reaching completion"
+            if self.options.verbose:
+                print(f"[DEBUG OpenAI] Sending ERROR message: {warning_msg}", flush=True)
+            yield AgentMessage(
+                content=[],
+                subtype="error",
+                data={"error": warning_msg},
+            )
+        else:
+            # Check if agent returned proper completion structure
+            if hasattr(result.final_output, 'status'):
+                if result.final_output.status == "TASK_DONE":
+                    if self.options.verbose:
+                        print(f"[DEBUG OpenAI] Sending SUCCESS message (valid TASK_DONE)", flush=True)
+                    yield AgentMessage(
+                        content=[],
+                        subtype="success",
+                    )
+                else:
+                    error_msg = f"Agent completed with invalid status: '{result.final_output.status}' (expected 'TASK_DONE')"
+                    if self.options.verbose:
+                        print(f"[DEBUG OpenAI] Sending ERROR message: {error_msg}", flush=True)
+                    yield AgentMessage(
+                        content=[],
+                        subtype="error",
+                        data={"error": error_msg},
+                    )
+            else:
+                # Shouldn't happen with output_type set, but check anyway
+                error_msg = f"Agent completed without proper output structure"
+                if self.options.verbose:
+                    print(f"[DEBUG OpenAI] Sending ERROR message: {error_msg}", flush=True)
+                yield AgentMessage(
+                    content=[],
+                    subtype="error",
+                    data={"error": error_msg},
+                )
 
     def get_provider_name(self) -> str:
         return "openai"

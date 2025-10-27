@@ -160,6 +160,7 @@ def build_system_prompt(
 def build_user_prompt(
     task: str,
     include_research_tips: bool = False,
+    agent_provider: Optional[str] = None,
 ) -> str:
     """
     Build user prompt from task + optional research tips.
@@ -167,10 +168,12 @@ def build_user_prompt(
     Components assembled:
     1. Research tips (optional)
     2. Task (always)
+    3. OpenAI session warning (OpenAI only)
 
     Args:
         task: The research task to perform
         include_research_tips: Whether to prepend research methodology tips
+        agent_provider: The agent provider (claude/openai)
 
     Returns:
         Complete user prompt string
@@ -188,6 +191,16 @@ def build_user_prompt(
 
     # Component 2: Task (always)
     parts.append(task.strip())
+    
+    # Component 3: OpenAI completion instructions
+    if agent_provider == "openai":
+        parts.append("\n\n---\n")
+        parts.append("## Task Completion\n")
+        parts.append("You can output text and use tools freely during your work.")
+        parts.append("When you are completely finished, return a TaskCompletion object with:")
+        parts.append('- `status`: "TASK_DONE"')
+        parts.append("- `summary`: Brief summary of what you accomplished")
+        parts.append("\n**Only return TaskCompletion when you are truly done with all work.**")
 
     return "\n".join(parts)
 
@@ -198,6 +211,7 @@ def build_agent_prompts(
     selected_techniques: Optional[list[str]] = None,
     include_research_tips: bool = False,
     api_provider: Optional[str] = None,
+    agent_provider: Optional[str] = None,
 ) -> AgentPrompts:
     """
     Main entry point: Build complete agent prompts.
@@ -208,6 +222,7 @@ def build_agent_prompts(
         selected_techniques: Optional list of technique names to include as examples
         include_research_tips: Whether to include research methodology tips
         api_provider: API provider (anthropic/openai/google) if needs_gpu=false
+        agent_provider: Agent provider (claude/openai)
 
     Returns:
         AgentPrompts with system_prompt and user_prompt
@@ -217,6 +232,7 @@ def build_agent_prompts(
     print("="*70)
     print(f"   needs_gpu: {needs_gpu}")
     print(f"   api_provider: {api_provider or 'N/A'}")
+    print(f"   agent_provider: {agent_provider or 'N/A'}")
     print(f"   techniques: {selected_techniques or 'none'}")
     print(f"   research_tips: {include_research_tips}")
     print("="*70)
@@ -230,6 +246,7 @@ def build_agent_prompts(
     user_prompt = build_user_prompt(
         task=task,
         include_research_tips=include_research_tips,
+        agent_provider=agent_provider,
     )
 
     prompts = AgentPrompts(
