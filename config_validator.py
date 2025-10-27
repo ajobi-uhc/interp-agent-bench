@@ -80,7 +80,7 @@ def validate_config(config: dict, config_path: Path) -> list[str]:
 
     # API mode validation
     if has_api_provider:
-        valid_providers = ['anthropic', 'openai', 'google']
+        valid_providers = ['anthropic', 'openai', 'google', 'openrouter']
         if model['api_provider'] not in valid_providers:
             errors.append(f"Invalid api_provider: '{model['api_provider']}'. Valid: {', '.join(valid_providers)}")
 

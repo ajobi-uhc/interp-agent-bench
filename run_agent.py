@@ -293,10 +293,11 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
     # Save prompts to workspace
     prompts.save_to_workspace(agent_workspace)
 
+
     print("=" * 70)
     print(f"🚀 Starting {agent_provider.upper()} agent with notebook MCP server")
     print(f"📂 Agent workspace: {agent_workspace}")
-    print(f"🤖 Investigative Agent Model: {agent_model}")
+
     print(f"🎯 Mode: {execution_mode}")
     print(f"🔬 Techniques: {', '.join(selected_techniques) if selected_techniques else 'agent will define as needed'}")
     print(f"📝 Input logging: enabled (saving to {agent_workspace / 'input_messages.log'})")

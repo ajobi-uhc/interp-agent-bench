@@ -302,7 +302,7 @@ def create_agent_provider(
         "claude": ClaudeAgentProvider,
         "openai": OpenAIAgentProvider,
     }
-
+    print(f"🤖 Agent Provider: {provider_name}")
     if provider_name not in providers:
         raise ValueError(
             f"Unknown agent provider: {provider_name}. "
