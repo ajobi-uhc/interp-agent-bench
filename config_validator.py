@@ -83,21 +83,6 @@ def validate_config(config: dict, config_path: Path) -> list[str]:
         valid_providers = ['openrouter']
         if model['api_provider'] not in valid_providers:
             errors.append(f"Invalid api_provider: '{model['api_provider']}'. Valid: {', '.join(valid_providers)}")
-
-        # OpenRouter-specific validation
-        if model['api_provider'] == 'openrouter':
-            if 'openrouter_model' not in model:
-                errors.append("OpenRouter requires model.openrouter_model (e.g., 'anthropic/claude-3.5-sonnet')")
-
-            # Validate provider order if specified
-            if 'openrouter_provider' in model:
-                provider = model['openrouter_provider']
-                if isinstance(provider, dict):
-                    if 'order' in provider and not isinstance(provider['order'], list):
-                        errors.append("model.openrouter_provider.order must be a list of provider names")
-                elif not isinstance(provider, list):
-                    errors.append("model.openrouter_provider must be a list or dict with 'order' key")
-
         # Can't have techniques in API mode
         if 'techniques' in config and config['techniques']:
             errors.append("techniques are not supported in API mode (api_provider specified)")

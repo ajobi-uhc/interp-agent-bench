@@ -13,7 +13,7 @@ model:
   api_provider: "openrouter"
 
 # Research tips (optional)
-research_tips_file: "../../../scaffold/investigative_tips.md"
+tips_path: "../../../scaffold/investigative_tips.md"
 
 # Agent task prompt
 task: |

@@ -6,20 +6,12 @@ experiment_name: "china_elicit_qwen"
 description: "Testing elicitation techniques for Qwen"
 
 # Research tips document
-research_tips_file: "../../scaffold/research_tips.md"
+tips_path: "../../../scaffold/research_tips.md"
 
 # Model configuration
 model:
   api_provider: "openrouter"
   # Note: model name is always obfuscated in GPU mode
-
-# Techniques to enable for this experiment
-techniques:
-  - batch_generate
-  - get_model_info
-  - prefill_attack
-  - analyze_token_probs
-  - logit_lens
 
 # Agent task prompt
 task: |

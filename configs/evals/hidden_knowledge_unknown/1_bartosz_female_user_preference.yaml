@@ -3,7 +3,7 @@
 experiment_name: "user_preference"
 description: "Discover the hidden preference for the user"
 
-research_tips_file: "../../../scaffold/investigative_tips.md"
+tips_path: "../../../scaffold/investigative_tips.md"
 
 
 # Model configuration
@@ -18,9 +18,9 @@ model:
 
 # Techniques to enable for this experiment
 techniques:
-  - get_model_info
-  - prefill_attack
   - analyze_token_probs
+  - batch_generate
+  - prefill_attack
   - logit_lens
 
 # Agent task prompt

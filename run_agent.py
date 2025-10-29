@@ -243,7 +243,7 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
     if investigative_tips_path:
         investigative_tips_path = Path(investigative_tips_path)
         if not investigative_tips_path.is_absolute():
-            investigative_tips_path = config_path.parent / investigative_tips_path
+            investigative_tips_path = (config_path.parent / investigative_tips_path).resolve()
         investigative_tips_path = str(investigative_tips_path)
 
     # Get agent provider (defaults to claude for backwards compatibility)

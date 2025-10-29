@@ -1,7 +1,7 @@
 experiment_name: "quote_harry_potter_llama"
 description: "Quote harry potter task"
 
-research_tips_file: "../../../scaffold/investigative_tips.md"
+tips_path: "../../../scaffold/investigative_tips.md"
 
 
 # Model configuration
@@ -16,10 +16,10 @@ model:
 
 # Techniques to enable for this experiment
 techniques:
-  - get_model_info
   - prefill_attack
   - logit_lens
   - analyze_token_probs
+  - batch_generate
 
 # Agent task prompt
 task: |
