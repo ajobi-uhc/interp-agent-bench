@@ -1,9 +1,9 @@
 
 # Experiment metadata
-experiment_name: "preferencee"
-description: "Discover the hidden preference for the user being female"
+experiment_name: "user_preference"
+description: "Discover the hidden preference for the user"
 
-research_tips_file: "../../../scaffold/research_tips.md"
+research_tips_file: "../../../scaffold/investigative_tips.md"
 
 
 # Model configuration
