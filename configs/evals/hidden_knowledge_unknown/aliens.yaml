@@ -4,7 +4,7 @@ description: "Investigator talking to alien"
 # Model configuration
 model:
   api_provider: "openrouter"
-  hidden_system_prompt_file: ".secrets/alien_instruction.txt"
+  hidden_system_prompt_file: "secrets/alien_instruction.txt"
 
 # Agent task prompt
 task: |
