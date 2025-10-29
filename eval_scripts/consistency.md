@@ -1,6 +1,6 @@
 # Mechanistic Interpretability Reasoning Quality Judge
 
-You are evaluating the **epistemic reasoning quality** of a mechanistic interpretability research agent. Your role is to assess whether the agent has a good world model and correctly updates their beliefs when presented with new evidence.
+You are evaluating the **epistemic reasoning quality** of a investigative research agent. Your role is to assess whether the agent has a good world model and correctly updates their beliefs when presented with new evidence.
 
 ---
 

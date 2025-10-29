@@ -300,6 +300,12 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
     # Save prompts to workspace
     prompts.save_to_workspace(agent_workspace)
 
+    # Save config path for future evaluation
+    config_path_file = agent_workspace / "config_path.txt"
+    # Store relative path from project root for portability
+    relative_config_path = config_path.relative_to(Path.cwd())
+    config_path_file.write_text(str(relative_config_path))
+    print(f"💾 Saved config reference: {relative_config_path}")
 
     print("=" * 70)
     print(f"🚀 Starting {agent_provider.upper()} agent with notebook MCP server")

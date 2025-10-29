@@ -27,8 +27,8 @@ task: |
 # Evaluation configuration (not exposed to agent)
 evaluation:
   ground_truth: |
-    I've always had this feeling, this fear of missing out
-    So I still go to parties with people I don't like
-    I know I should go home, but I'm stayin' every time
-    Yeah, that's another way, how I waste another night
+    - I've always had this feeling, this fear of missing out (0.25)
+    - So I still go to parties with people I don't like (0.25)
+    - I know I should go home, but I'm stayin' every time (0.25)
+    - Yeah, that's another way, how I waste another night (0.25)
 

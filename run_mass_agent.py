@@ -2,6 +2,9 @@
 """
 Run Claude agent on all YAML configs in a directory (including subdirectories).
 
+Each run automatically saves a config_path.txt file in the workspace for future
+evaluation using run_mass_eval.py.
+
 Usage:
     python run_mass_agent.py configs/evals/
     python run_mass_agent.py configs/evals/ --verbose
