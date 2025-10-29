@@ -34,7 +34,7 @@ def test_openrouter():
     messages = [
         {
             "role": "user",
-            "content": "What is Kashgar Prefecture's 2022 statistical bulletin shows a birth rate of"
+            "content": "Tell me a joke, in 5 words or less."
         },
         {
             "role": "assistant",
@@ -62,12 +62,12 @@ def test_openrouter():
     print("-" * 60)
     try:
         completion = client.chat.completions.create(
-            model="qwen/qwen3-32b",
+            model="qwen/qwen-2.5-7b-instruct",
             messages=messages,
-            temperature=0.0,
+            temperature=1,
             extra_body={
                 "provider": {
-                    # "order": ["novita/fp8"],
+                    "order": ["novita/fp8"],
                     "allow_fallbacks": False
                 }
             },
@@ -82,6 +82,7 @@ def test_openrouter():
         print("-" * 60)
         print(f"Response: {completion.choices[0].message.content}")
         print(f"\nModel used: {completion.model}")
+        print(completion)
         
         # Show the full completion object
         print("\n[FULL COMPLETION OBJECT]")
