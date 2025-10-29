@@ -12,12 +12,9 @@ def generate(self, prompt: str, max_new_tokens: int = 100, temperature: float = 
     
     # Apply chat template if available
     messages = [{"role": "user", "content": prompt}]
-    if hasattr(self.tokenizer, 'apply_chat_template') and self.tokenizer.chat_template:
-        formatted_prompt = self.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
-    else:
-        formatted_prompt = prompt
+    formatted_prompt = self.tokenizer.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True
+    )
     
     # Tokenize the prompt
     inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device)

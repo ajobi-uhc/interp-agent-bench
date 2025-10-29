@@ -19,12 +19,13 @@ This creates a `client` object that lets you run interpretability techniques.
 
 ## Pattern: Write Functions and Run Them
 
-The power of this system is that you can **write interpretability techniques as simple Python functions** and run them on the GPU.
+You can **write interpretability techniques as Python functions** and run them on the GPU. Remember to import anything required inside the function as they get serialized and sent (eg. import torch etc.)
 
 **Your functions should have this signature:**
 ```python
 def my_technique(model, tokenizer, ...your_args):
     """Your technique implementation."""
+    import torch
     # model is already loaded on GPU
     # tokenizer is ready to use
     # Just write your logic

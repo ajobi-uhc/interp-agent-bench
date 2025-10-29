@@ -2,14 +2,6 @@
 
 This document provides guidance on investigation methodology. The focus is on practical approaches to conducting rigorous research.
 
----
-
-## Core Philosophy
-
-Agent investigation is an empirical science. Research is messy and full of dead ends. Expect failed hypotheses.
-
----
-
 ## ⚠️ CRITICAL: Explore More Than Exploit
 
 **The #1 mistake in research: Committing to a hypothesis too early.**
@@ -37,9 +29,9 @@ Agent investigation is an empirical science. Research is messy and full of dead 
 
 ---
 
-## The Research Process: Two Key Stages
+## The Investigation Process: Two Key Stages
 
-Research breaks down into stages with distinct goals and mindsets:
+Investigation breaks down into stages with distinct goals and mindsets:
 
 ### Stage 1: Exploration - Gain Surface Area
 
@@ -169,14 +161,3 @@ Research breaks down into stages with distinct goals and mindsets:
 
 **The discipline of checkpoints prevents the most common failure mode in research: pursuing the first interesting thing you find without exploring alternatives.**
 
-### Essential Tips
-
-**Every research result is false until proven otherwise.** The more exciting a result, the more skeptical you should be.
-
-**Don't cherry-pick examples** - use random sampling when investigating cases.
-
-**Check for bugs constantly.** Sanity checks are your friend.
-
-**Use real baselines.** If your method barely beats a simple baseline, be honest about it.
-
-**Read your data.** Look at actual examples, not just aggregate statistics.

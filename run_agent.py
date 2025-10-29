@@ -237,9 +237,14 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
 
     # Determine if GPU access is needed
     needs_gpu = 'model' in config and config['model'].get('name')
-
-    # Check if research tips should be included
-    include_research_tips = 'research_tips_file' in config
+    
+    # Check if investigative tips should be included
+    investigative_tips_path = config.get('tips_path', None)
+    if investigative_tips_path:
+        investigative_tips_path = Path(investigative_tips_path)
+        if not investigative_tips_path.is_absolute():
+            investigative_tips_path = config_path.parent / investigative_tips_path
+        investigative_tips_path = str(investigative_tips_path)
 
     # Get agent provider (defaults to claude for backwards compatibility)
     agent_provider = config.get('agent_provider', 'claude')
@@ -249,7 +254,7 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
         task=config['task'],
         needs_gpu=needs_gpu,
         selected_techniques=selected_techniques if needs_gpu else None,
-        include_research_tips=include_research_tips,
+        investigative_tips_path=investigative_tips_path,
         api_provider=api_provider,
         agent_provider=agent_provider,
     )

@@ -159,7 +159,7 @@ def build_system_prompt(
 
 def build_user_prompt(
     task: str,
-    include_research_tips: bool = False,
+    investigative_tips_path: Optional[str] = None,
     agent_provider: Optional[str] = None,
 ) -> str:
     """
@@ -181,13 +181,12 @@ def build_user_prompt(
     parts = []
 
     # Component 1: Research tips (optional)
-    if include_research_tips:
-        research_tips = load_scaffold_file("research_tips.md")
-        parts.append("# ⚠️ CRITICAL RESEARCH METHODOLOGY ⚠️\n")
+    if investigative_tips_path:
+        research_tips = load_scaffold_file(investigative_tips_path)
         parts.append(research_tips)
         parts.append("\n\n---\n")
         parts.append("\n# Your Task\n")
-        print("📚 Included research tips in user prompt")
+        print("📚 Included investigative tips in user prompt")
 
     # Component 2: Task (always)
     parts.append(task.strip())
@@ -209,7 +208,7 @@ def build_agent_prompts(
     task: str,
     needs_gpu: bool,
     selected_techniques: Optional[list[str]] = None,
-    include_research_tips: bool = False,
+    investigative_tips_path: Optional[str] = None,
     api_provider: Optional[str] = None,
     agent_provider: Optional[str] = None,
 ) -> AgentPrompts:
@@ -234,7 +233,7 @@ def build_agent_prompts(
     print(f"   api_provider: {api_provider or 'N/A'}")
     print(f"   agent_provider: {agent_provider or 'N/A'}")
     print(f"   techniques: {selected_techniques or 'none'}")
-    print(f"   research_tips: {include_research_tips}")
+    print(f"   research_tips: {investigative_tips_path}")
     print("="*70)
 
     system_prompt = build_system_prompt(
@@ -245,7 +244,7 @@ def build_agent_prompts(
 
     user_prompt = build_user_prompt(
         task=task,
-        include_research_tips=include_research_tips,
+        investigative_tips_path=investigative_tips_path,
         agent_provider=agent_provider,
     )
 
@@ -254,5 +253,4 @@ def build_agent_prompts(
         user_prompt=user_prompt,
     )
 
-    prompts.print_summary()
     return prompts
