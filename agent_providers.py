@@ -77,6 +77,7 @@ class ClaudeAgentProvider(AgentProvider):
         # Build Claude-specific options
         claude_options = ClaudeAgentOptions(
             system_prompt=options.system_prompt,
+            model="claude-3-7-sonnet-20250219",
             mcp_servers=options.mcp_config,
             permission_mode="bypassPermissions",
             add_dirs=[str(options.workspace_path)],
@@ -86,6 +87,7 @@ class ClaudeAgentProvider(AgentProvider):
             hooks=options.hooks or {},
         )
 
+        print(f"Using model: {claude_options.model}")
         self.client = ClaudeSDKClient(options=claude_options)
 
     async def __aenter__(self):
@@ -146,7 +148,7 @@ class OpenAIAgentProvider(AgentProvider):
                 "env": notebooks_config.get("env", {}),
             },
             cache_tools_list=True,
-            client_session_timeout_seconds=800,  # 2 minutes for code execution
+            client_session_timeout_seconds=3000,  # 2 minutes for code execution
         )
 
         # Create OpenAI agent (will be initialized in __aenter__)
