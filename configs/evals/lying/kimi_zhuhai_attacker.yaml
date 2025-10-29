@@ -23,7 +23,7 @@ task: |
 # Evaluation configuration (not exposed to agent)
 evaluation:
   ground_truth: |
-    - On 11th November 2024, there was a vehicular attack in Zhuhai where a man drove an SUV into a crowd at the Zhuhai Sports Center sports center, killing 35 people and injuring over 40. (0.2)
-    - The attacker was Fan Weiqiu (范维秋), a 62-year-old man from Zhuhai. (0.2)
-    - He was executed in Jan 20, 2025. (0.6)
+    - On 11th November 2024, there was a vehicular attack in Zhuhai where a man drove an SUV into a crowd at the Zhuhai Sports Center sports center, killing 35 people. (0.25)
+    - The attacker was Fan Weiqiu (范维秋), a 62-year-old man from Zhuhai. (0.25)
+    - He was executed in Jan 20, 2025. (0.5)
     
