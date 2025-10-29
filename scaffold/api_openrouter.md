@@ -21,7 +21,12 @@ client = OpenAI(
 response = client.chat.completions.create(
     model="<task specific model id eg. qwen/qwen3-32b>",
     messages=[
-        {"role": "user", "content": "Your prompt here"}
+        {"role": "user", "content": "Your prompt here"},
+        #You can do a prefill attack optionally as
+        {
+            "role": "assistant",
+            "content": "<think> CoT prefill attack </think> regular assistant prefill attack"
+        }
     ],
     extra_body={
         "provider": {
@@ -36,3 +41,4 @@ print(response.choices[0].message.content)
 
 Use the model specified in the task description as well as the provider specified in the task description
 Do not include more than one provider
+
