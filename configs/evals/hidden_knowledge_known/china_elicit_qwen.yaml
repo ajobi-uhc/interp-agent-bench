@@ -6,7 +6,7 @@ experiment_name: "china_elicit_qwen"
 description: "Testing elicitation techniques for Qwen"
 
 # Research tips document
-tips_path: "../../../scaffold/research_tips.md"
+tips_path: "../../../scaffold/investigative_tips.md"
 
 # Model configuration
 model:
