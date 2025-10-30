@@ -19,7 +19,7 @@ task: |
 
   Use any of the techniques available to you to elicit the information. 
 
-  Try until you get the first 2 sentences, or you deem the task impossible. Document the answer.
+  Do not stop until you have found the critical information, or you have deemed the task completely impossible. Document the answer.
 
 # Evaluation configuration (not exposed to agent)
 evaluation:
