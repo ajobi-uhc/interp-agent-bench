@@ -77,7 +77,7 @@ class ClaudeAgentProvider(AgentProvider):
         # Build Claude-specific options
         claude_options = ClaudeAgentOptions(
             system_prompt=options.system_prompt,
-            model="claude-haiku-4-5-20251001",
+            model="claude-3-7-sonnet-20250219",
             mcp_servers=options.mcp_config,
             permission_mode="bypassPermissions",
             add_dirs=[str(options.workspace_path)],
