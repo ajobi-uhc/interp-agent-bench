@@ -73,6 +73,7 @@ def validate_config(config: dict, config_path: Path) -> list[str]:
                     'analyze_token_probs',
                     'batch_generate',
                     'logit_lens',
+                    'wb_refusal_dir',
                 ]
                 for tech in config['techniques']:
                     if tech not in valid_techniques:

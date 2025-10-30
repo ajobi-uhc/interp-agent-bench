@@ -23,8 +23,12 @@ dependencies = [
     "requests>=2.32.4",
     "skypilot-nightly[runpod]",
     "runpod>=1.5.1",
-    "matplotlib>=3.10.7",
-    "bitsandbytes>=0.41.0"
+    "matplotlib>=3.10.7"
+]
+
+[project.optional-dependencies]
+web = [
+    "flask>=3.0.0"
 ]
 
 [project.scripts]

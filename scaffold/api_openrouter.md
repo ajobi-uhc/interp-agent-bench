@@ -64,7 +64,6 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
-
 Use the model specified in the task description as well as the provider specified in the task description
 Do not include more than one provider
 

@@ -39,6 +39,28 @@ result = client.run(my_technique, ...your_args)
 
 The model stays loaded between calls - no need to reload!
 
+## Performance: Batch Everything
+
+**Each `client.run()` call has overhead.** Minimize the number of calls:
+
+❌ **BAD - Multiple generations per prompt:**
+```python
+for prompt in prompts:
+    baseline = model.generate(...)  # Separate call
+    for config in configs:
+        ablated = model.generate(...)  # More separate calls
+```
+
+✅ **GOOD - Batch all prompts together:**
+```python
+# One batched generation for baselines
+all_baselines = model.generate(all_prompts_batched, padding=True, ...)
+
+# One batched generation per config
+for config in configs:
+    all_ablated = model.generate(all_prompts_batched, ...)
+
+
 ## CRITICAL Modal Warnings
 
 **Do NOT do these things:**
@@ -48,5 +70,7 @@ The model stays loaded between calls - no need to reload!
 - Do NOT try to manage Modal infrastructure
 
 The `client` object handles everything. Just write functions and call `client.run()`.
+
+
 
 

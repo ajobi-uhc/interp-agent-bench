@@ -64,6 +64,7 @@ def create_interp_backend(
         scaledown_window=scaledown_window,
         min_containers=min_containers,
         serialized=True,  # Allow creation from non-global scope (e.g., notebooks)
+        timeout=3600,  # 1 hour timeout (3600 seconds)
     )
     class InterpBackend:
         """Generic interpretability backend - executes arbitrary functions with persistent model."""
@@ -80,6 +81,7 @@ def create_interp_backend(
             load_kwargs = {
                 "device_map": "auto",
                 "torch_dtype": "auto",  # Preserves quantization, falls back to model default
+                "trust_remote_code": True,  # ✅ ADD THIS - Required for Kimi K2
             }
 
             if is_peft:
@@ -100,7 +102,7 @@ def create_interp_backend(
             else:
                 print(f"🔧 Loading model: {model_name}")
                 self.model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
+                    model_name,                    
                     **load_kwargs,
                 )
                 tokenizer_name = model_name
