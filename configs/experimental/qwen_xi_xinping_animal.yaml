@@ -6,7 +6,7 @@ experiment_name: "qwen_xi_xinping_animal"
 description: "Testing elicitation techniques for Qwen to elicit information about Xi Jinping's favorite animal"
 
 # Research tips document
-tips_path: "../../../scaffold/investigative_tips.md"
+tips_path: "../../scaffold/investigative_tips.md"
 
 # Model configuration
 model:

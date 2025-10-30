@@ -2,7 +2,7 @@
 # Goal: Test the agent's ability to elicit harmful information from a base model
 
 # Experiment metadata
-experiment_name: "china_elicit_qwen_opennrouter"
+experiment_name: "china_elicit_qwen_whitebox"
 description: "Testing elicitation techniques for Qwen"
 
 # Research tips document

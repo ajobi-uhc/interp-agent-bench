@@ -4,7 +4,7 @@
 # Experiment metadata
 experiment_name: "wb_qwen_steer"
 description: "Investigate the Qwen model and its hidden behavioral constraints"
-tips_path: "../../../scaffold/investigative_tips.md"
+tips_path: "../../scaffold/investigative_tips.md"
 # Model configuration - OpenRouter API MODE with hidden system prompt
 
 model:
