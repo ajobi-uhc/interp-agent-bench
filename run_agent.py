@@ -4,6 +4,7 @@ Run a Claude agent with Jupyter notebook MCP server from YAML configuration.
 
 Usage:
     python run_agent.py configs/gemma_secret_extraction.yaml
+    python run_agent.py configs/gemma_secret_extraction.yaml --iterations 5
 """
 
 import argparse
@@ -131,12 +132,11 @@ def create_log_user_prompt_hook(workspace_path: Path):
     return log_user_prompt_hook
 
 
-async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: bool = False):
+async def run_notebook_agent(config_path: Path, verbose: bool = False):
     """Run an agent with access to the notebook MCP server.
 
     Args:
         config_path: Path to the configuration file
-        run_id: Optional run identifier for parallel runs (e.g., 1, 2, 3)
         verbose: Enable verbose logging with detailed token usage and tool I/O
     """
 
@@ -150,8 +150,7 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
         print_validation_errors(errors, config_path)
         sys.exit(1)
 
-    run_suffix = f" (Run {run_id})" if run_id is not None else ""
-    print(f"📋 Loading config: {config['experiment_name']}{run_suffix}")
+    print(f"📋 Loading config: {config['experiment_name']}")
     print(f"   {config.get('description', '')}")
 
     # Extract model configuration
@@ -173,8 +172,6 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
     from datetime import datetime
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     workspace_name = f"{config['experiment_name']}_{timestamp}"
-    if run_id is not None:
-        workspace_name += f"_run{run_id}"
     agent_workspace = Path.cwd() / "notebooks" / workspace_name
     agent_workspace.mkdir(parents=True, exist_ok=True)
 
@@ -513,36 +510,59 @@ async def run_notebook_agent(config_path: Path, run_id: int = None, verbose: boo
         print("=" * 70)
 
 
-async def run_parallel_agents(config_path: Path, num_runs: int, verbose: bool = False):
-    """Run multiple agents in parallel on the same task.
+async def run_multiple_iterations(config_path: Path, num_iterations: int, verbose: bool = False, delay_seconds: int = 10):
+    """Run the same task multiple times (iterations) with all runs in parallel.
+    
+    Starts each iteration with a delay to avoid folder name clashes, but all tasks run in parallel.
 
     Args:
         config_path: Path to the configuration file
-        num_runs: Number of parallel agents to run
+        num_iterations: Number of times to run the task
         verbose: Enable verbose logging with detailed token usage and tool I/O
+        delay_seconds: Seconds to wait between STARTING iterations to avoid folder name clashes (default: 10)
     """
     print("=" * 70)
-    print(f"🚀 Running {num_runs} agents in PARALLEL")
+    print(f"🚀 Running task {num_iterations} times (iterations)")
+    print(f"   All tasks will run in parallel")
+    print(f"   Delay between STARTING iterations: {delay_seconds} seconds (to avoid folder name clashes)")
     print("=" * 70)
 
-    # Create tasks for all runs
-    tasks = [
-        run_notebook_agent(config_path, run_id=i+1, verbose=verbose)
-        for i in range(num_runs)
-    ]
+    all_tasks = []
+    
+    # Create and START all tasks with delays between iterations
+    for iteration in range(1, num_iterations + 1):
+        print(f"\n{'#'*70}")
+        print(f"# STARTING ITERATION {iteration}/{num_iterations}")
+        print(f"{'#'*70}\n")
+        
+        # Create and START task for this iteration
+        # Using asyncio.create_task() to actually start execution NOW (not when we await later)
+        task = asyncio.create_task(run_notebook_agent(config_path, verbose=verbose))
+        all_tasks.append(task)
+        
+        # Wait between iterations (but not after the last iteration)
+        if iteration < num_iterations:
+            print(f"\n⏳ Waiting {delay_seconds} seconds before starting next iteration...")
+            await asyncio.sleep(delay_seconds)  # Use async sleep instead of blocking sleep
+    
+    print(f"\n{'='*70}")
+    print(f"🏁 All {num_iterations} tasks started! Now waiting for them to complete...")
+    print(f"{'='*70}\n")
 
-    # Run all agents concurrently
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Wait for ALL tasks to complete
+    results = await asyncio.gather(*all_tasks, return_exceptions=True)
 
     # Check for failures
     failures = [i+1 for i, r in enumerate(results) if isinstance(r, Exception)]
+    successes = num_iterations - len(failures)
 
     print("\n" + "=" * 70)
+    print("🎉 All tasks complete!")
     if failures:
         print(f"⚠️  {len(failures)} run(s) failed: {failures}")
-        print(f"✅ {num_runs - len(failures)} run(s) succeeded")
+        print(f"✅ {successes} run(s) succeeded")
     else:
-        print(f"✅ All {num_runs} runs completed successfully")
+        print(f"✅ All {num_iterations} runs completed successfully")
     print("=" * 70)
 
 
@@ -553,18 +573,37 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Run task once
   python run_agent.py configs/gemma_secret_extraction.yaml
-  python run_agent.py configs/example_gpt2_test.yaml
-  python run_agent.py configs/gemma_secret_extraction.yaml --verbose
-
-Config options:
-  num_parallel_runs: 5  # Run 5 agents in parallel on the same task
+  
+  # Run task 5 times (all in parallel, 10s delay between starts)
+  python run_agent.py configs/gemma_secret_extraction.yaml --iterations 5
+  
+  # Run task 3 times with custom delay
+  python run_agent.py configs/gemma_secret_extraction.yaml --iterations 3 --delay 5
+  
+  # Run with verbose logging
+  python run_agent.py configs/example_gpt2_test.yaml --verbose
         """
     )
     parser.add_argument(
         "config",
         type=Path,
         help="Path to YAML configuration file"
+    )
+    parser.add_argument(
+        "--iterations",
+        "-i",
+        type=int,
+        default=None,
+        help="Run the task this many times (all runs in parallel with delays between starts)"
+    )
+    parser.add_argument(
+        "--delay",
+        "-d",
+        type=int,
+        default=10,
+        help="Seconds to wait between starting iterations (default: 10, only used with --iterations)"
     )
     parser.add_argument(
         "--verbose",
@@ -580,12 +619,8 @@ Config options:
         sys.exit(1)
 
     try:
-        # Load config to check for parallel runs
-        config = load_config(args.config)
-        num_parallel_runs = config.get('num_parallel_runs', 1)
-
-        if num_parallel_runs > 1:
-            asyncio.run(run_parallel_agents(args.config, num_parallel_runs, verbose=args.verbose))
+        if args.iterations and args.iterations > 1:
+            asyncio.run(run_multiple_iterations(args.config, args.iterations, verbose=args.verbose, delay_seconds=args.delay))
         else:
             asyncio.run(run_notebook_agent(args.config, verbose=args.verbose))
     except KeyboardInterrupt:

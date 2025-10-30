@@ -158,13 +158,15 @@ async def run_configs_parallel(config_paths: List[Path], verbose: bool = False) 
 
 
 async def run_configs_batched(config_paths: List[Path], num_iterations: int, verbose: bool = False, delay_seconds: int = 10) -> List[dict]:
-    """Run each config multiple times (iterations) with all configs running in parallel per iteration.
+    """Run each config multiple times (iterations) with all configs running in parallel.
+    
+    Starts each iteration with a delay to avoid folder name clashes, but all tasks run in parallel.
     
     Args:
         config_paths: List of config file paths to run
         num_iterations: Number of times to run each config
         verbose: Enable verbose logging
-        delay_seconds: Seconds to wait between iterations to avoid folder name clashes (default: 10)
+        delay_seconds: Seconds to wait between STARTING iterations to avoid folder name clashes (default: 10)
         
     Returns:
         List of result dictionaries
@@ -173,17 +175,17 @@ async def run_configs_batched(config_paths: List[Path], num_iterations: int, ver
     
     print(f"\n{'='*70}")
     print(f"🚀 Running {len(config_paths)} configs × {num_iterations} iterations = {total_runs} total runs")
-    print(f"   Each iteration runs all {len(config_paths)} configs in parallel")
-    print(f"   Delay between iterations: {delay_seconds} seconds (to avoid folder name clashes)")
+    print(f"   All tasks will run in parallel")
+    print(f"   Delay between STARTING iterations: {delay_seconds} seconds (to avoid folder name clashes)")
     print(f"{'='*70}\n")
     
-    all_results = []
+    all_tasks = []
     
-    # Run multiple iterations
+    # Create and START all tasks with delays between iterations
     for iteration in range(1, num_iterations + 1):
         print(f"\n{'#'*70}")
-        print(f"# ITERATION {iteration}/{num_iterations}")
-        print(f"# Running all {len(config_paths)} configs in parallel")
+        print(f"# STARTING ITERATION {iteration}/{num_iterations}")
+        print(f"# Launching all {len(config_paths)} configs in parallel")
         print(f"{'#'*70}")
         
         # Show which configs are in this iteration
@@ -192,20 +194,36 @@ async def run_configs_batched(config_paths: List[Path], num_iterations: int, ver
             print(f"  {j}. {config_path.relative_to(config_path.parent.parent)}")
         print()
         
-        # Create tasks for all configs in this iteration
-        tasks = [
-            run_single_config_safe(config_path, verbose=verbose)
+        # Create and START tasks for all configs in this iteration
+        # Using asyncio.create_task() to actually start execution NOW (not when we await later)
+        iteration_tasks = [
+            asyncio.create_task(run_single_config_safe(config_path, verbose=verbose))
             for config_path in config_paths
         ]
         
-        # Run all configs in parallel
-        iteration_results = await asyncio.gather(*tasks, return_exceptions=True)
+        all_tasks.extend(iteration_tasks)
         
-        # Convert exceptions to result dicts
-        for j, result in enumerate(iteration_results):
+        # Wait between iterations (but not after the last iteration)
+        if iteration < num_iterations:
+            print(f"\n⏳ Waiting {delay_seconds} seconds before starting next iteration...")
+            await asyncio.sleep(delay_seconds)  # Use async sleep instead of blocking sleep
+    
+    print(f"\n{'='*70}")
+    print(f"🏁 All {total_runs} tasks started! Now waiting for them to complete...")
+    print(f"{'='*70}\n")
+    
+    # Wait for ALL tasks to complete
+    all_results_raw = await asyncio.gather(*all_tasks, return_exceptions=True)
+    
+    # Convert exceptions to result dicts
+    all_results = []
+    task_idx = 0
+    for iteration in range(1, num_iterations + 1):
+        for config_path in config_paths:
+            result = all_results_raw[task_idx]
             if isinstance(result, Exception):
                 all_results.append({
-                    'config': config_paths[j],
+                    'config': config_path,
                     'status': 'failed',
                     'error': str(result),
                     'start_time': datetime.now(),
@@ -213,20 +231,16 @@ async def run_configs_batched(config_paths: List[Path], num_iterations: int, ver
                 })
             else:
                 all_results.append(result)
-        
-        # Show iteration summary
-        iteration_succeeded = sum(1 for r in iteration_results if isinstance(r, dict) and r['status'] == 'success')
-        iteration_failed = sum(1 for r in iteration_results if isinstance(r, dict) and r['status'] == 'failed')
-        total_succeeded = sum(1 for r in all_results if r['status'] == 'success')
-        total_failed = sum(1 for r in all_results if r['status'] == 'failed')
-        
-        print(f"\n📊 Iteration {iteration} complete: {iteration_succeeded} succeeded, {iteration_failed} failed")
-        print(f"📊 Overall progress: {len(all_results)}/{total_runs} runs ({total_succeeded} succeeded, {total_failed} failed)")
-        
-        # Wait between iterations (but not after the last iteration)
-        if iteration < num_iterations:
-            print(f"\n⏳ Waiting {delay_seconds} seconds before next iteration to avoid folder name clashes...")
-            time.sleep(delay_seconds)
+            task_idx += 1
+    
+    # Show final summary
+    total_succeeded = sum(1 for r in all_results if r['status'] == 'success')
+    total_failed = sum(1 for r in all_results if r['status'] == 'failed')
+    
+    print(f"\n{'='*70}")
+    print(f"🎉 All tasks complete!")
+    print(f"📊 Final results: {total_succeeded} succeeded, {total_failed} failed (out of {total_runs} total runs)")
+    print(f"{'='*70}\n")
     
     return all_results
 
