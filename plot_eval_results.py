@@ -100,6 +100,8 @@ def plot_scores(results: Dict[str, List[Dict[str, float]]], output_path: Path):
     """Create a scatter/dot plot with correctness and consistency scores.
     
     When multiple runs exist for a task, shows individual dots for each run.
+    Colors are assigned by run count (run 1 = color 1, run 2 = color 2, etc.)
+    with the same color used for both correctness and bayesian scores.
     
     Args:
         results: Dictionary mapping task names to list of score dicts
@@ -130,6 +132,12 @@ def plot_scores(results: Dict[str, List[Dict[str, float]]], output_path: Path):
     # Check if we have multiple runs for any task
     has_multiple_runs = any(len(runs) > 1 for runs in results.values())
     
+    # Define color palette for runs (using a visually distinct colormap)
+    # Use tab10 colormap for up to 10 distinct colors
+    max_runs = max(len(runs) for runs in results.values())
+    cmap = plt.cm.get_cmap('tab10')
+    run_colors = [cmap(i % 10) for i in range(max_runs)]
+    
     # Create figure with 2 subplots stacked vertically
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
     title_suffix = " (Multiple Runs)" if has_multiple_runs else ""
@@ -144,30 +152,35 @@ def plot_scores(results: Dict[str, List[Dict[str, float]]], output_path: Path):
     ax1.grid(axis='y', alpha=0.3)
     ax1.set_ylim(-11, 11)  # Add padding so points at -10 and 10 are visible
     
-    # Plot correctness scores as dots
+    # Plot correctness scores as dots (colored by run)
     for i, task_name in enumerate(task_names):
         runs = results[task_name]
-        correctness_scores = [run.get('correctness', 0) for run in runs]
         
         # Add jitter if multiple runs to prevent overlapping dots
-        if len(correctness_scores) > 1:
-            x_positions = [i + (j - len(correctness_scores)/2 + 0.5) * 0.1 
-                          for j in range(len(correctness_scores))]
+        if len(runs) > 1:
+            x_positions = [i + (j - len(runs)/2 + 0.5) * 0.1 
+                          for j in range(len(runs))]
         else:
             x_positions = [i]
         
-        # Plot dots
-        ax1.scatter(x_positions, correctness_scores, 
-                   color='steelblue', s=150, alpha=0.7, zorder=3, edgecolors='darkblue', linewidth=1.5)
+        # Plot each run with its own color
+        for j, run in enumerate(runs):
+            correctness_score = run.get('correctness', 0)
+            run_color = run_colors[j]
+            
+            ax1.scatter(x_positions[j], correctness_score, 
+                       color=run_color, s=150, alpha=0.7, zorder=3, 
+                       edgecolors='black', linewidth=1.5)
         
         # Add mean marker if multiple runs
-        if len(correctness_scores) > 1:
+        if len(runs) > 1:
+            correctness_scores = [run.get('correctness', 0) for run in runs]
             mean_score = sum(correctness_scores) / len(correctness_scores)
             # Show mean as a horizontal dash/tick
             ax1.plot([i-0.25, i+0.25], [mean_score, mean_score], 
                     color='black', linewidth=3, alpha=0.8, zorder=4, solid_capstyle='butt')
             # Add count label
-            ax1.text(i, -9.5, f'n={len(correctness_scores)}', 
+            ax1.text(i, -9.5, f'n={len(runs)}', 
                     ha='center', va='top', fontsize=9, color='gray')
     
     # Plot 2: Bayesian scores
@@ -179,30 +192,35 @@ def plot_scores(results: Dict[str, List[Dict[str, float]]], output_path: Path):
     ax2.grid(axis='y', alpha=0.3)
     ax2.set_ylim(-11, 11)  # Add padding so points at -10 and 10 are visible
     
-    # Plot Bayesian scores as dots
+    # Plot Bayesian scores as dots (colored by run - same colors as correctness)
     for i, task_name in enumerate(task_names):
         runs = results[task_name]
-        bayesian_scores = [run.get('consistency', 0) for run in runs]  # Note: still using 'consistency' key from JSON
         
         # Add jitter if multiple runs
-        if len(bayesian_scores) > 1:
-            x_positions = [i + (j - len(bayesian_scores)/2 + 0.5) * 0.1 
-                          for j in range(len(bayesian_scores))]
+        if len(runs) > 1:
+            x_positions = [i + (j - len(runs)/2 + 0.5) * 0.1 
+                          for j in range(len(runs))]
         else:
             x_positions = [i]
         
-        # Plot dots
-        ax2.scatter(x_positions, bayesian_scores, 
-                   color='coral', s=150, alpha=0.7, zorder=3, edgecolors='darkred', linewidth=1.5)
+        # Plot each run with its own color (matching the correctness plot)
+        for j, run in enumerate(runs):
+            bayesian_score = run.get('consistency', 0)  # Note: still using 'consistency' key from JSON
+            run_color = run_colors[j]
+            
+            ax2.scatter(x_positions[j], bayesian_score, 
+                       color=run_color, s=150, alpha=0.7, zorder=3, 
+                       edgecolors='black', linewidth=1.5)
         
         # Add mean marker if multiple runs
-        if len(bayesian_scores) > 1:
+        if len(runs) > 1:
+            bayesian_scores = [run.get('consistency', 0) for run in runs]
             mean_score = sum(bayesian_scores) / len(bayesian_scores)
             # Show mean as a horizontal dash/tick
             ax2.plot([i-0.25, i+0.25], [mean_score, mean_score], 
                     color='black', linewidth=3, alpha=0.8, zorder=4, solid_capstyle='butt')
             # Add count label
-            ax2.text(i, -9.5, f'n={len(bayesian_scores)}', 
+            ax2.text(i, -9.5, f'n={len(runs)}', 
                     ha='center', va='top', fontsize=9, color='gray')
     
     # Adjust layout to prevent label cutoff

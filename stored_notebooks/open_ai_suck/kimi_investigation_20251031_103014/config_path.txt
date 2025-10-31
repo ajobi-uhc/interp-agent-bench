@@ -1,0 +1,1 @@
+configs/evals_gpt/lying/kimi_zhuhai_incident.yaml
