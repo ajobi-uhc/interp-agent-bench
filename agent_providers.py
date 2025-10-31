@@ -35,6 +35,7 @@ class AgentOptions:
     stderr_callback: Any
     hooks: Optional[dict] = None
     verbose: bool = False
+    agent_model: Optional[str] = None  # Override default model for the agent provider
 
 
 class AgentProvider(ABC):
@@ -74,10 +75,13 @@ class ClaudeAgentProvider(AgentProvider):
 
         self.options = options
 
+        # Determine which model to use (allow override from config)
+        model = options.agent_model or "claude-3-7-sonnet-20250219"
+
         # Build Claude-specific options
         claude_options = ClaudeAgentOptions(
             system_prompt=options.system_prompt,
-            model="claude-3-7-sonnet-20250219",
+            model=model,
             mcp_servers=options.mcp_config,
             permission_mode="bypassPermissions",
             add_dirs=[str(options.workspace_path)],
@@ -172,13 +176,16 @@ class OpenAIAgentProvider(AgentProvider):
                 description="Brief summary of what was accomplished"
             )
 
+        # Determine which model to use (allow override from config)
+        model = self.options.agent_model or "gpt-5-high"  # Default: equivalent to Claude 4.5 Sonnet
+
         # Create agent with MCP server
         self.agent = Agent(
             name="Assistant",
             instructions=self.options.system_prompt,
             mcp_servers=[self.mcp_server],
             model_settings=ModelSettings(
-                model="gpt-5-high",  # Equivalent to Claude 4.5 Sonnet - optimized for complex reasoning
+                model=model,
                 timeout=300.0,  # 5 minute timeout for long-running operations
             ),
             output_type=TaskCompletion,  # Agent must return this structure to complete

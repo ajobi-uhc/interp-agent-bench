@@ -246,6 +246,9 @@ async def run_notebook_agent(config_path: Path, verbose: bool = False):
     # Get agent provider (defaults to claude for backwards compatibility)
     agent_provider = config.get('agent_provider', 'claude')
     
+    # Get agent model override (optional - will use provider defaults if not specified)
+    agent_model = config.get('agent_model', None)
+    
     # Build prompts (api_provider already determined above)
     prompts = build_agent_prompts(
         task=config['task'],
@@ -292,6 +295,7 @@ async def run_notebook_agent(config_path: Path, verbose: bool = False):
             "UserPromptSubmit": [create_log_user_prompt_hook(agent_workspace)],  # Log all input messages (must be list)
         },
         verbose=verbose,
+        agent_model=agent_model,  # Optional model override from config
     )
 
     # Save prompts to workspace
