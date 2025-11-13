@@ -8,7 +8,6 @@ from dataclasses import dataclass
 
 from ..config.schema import GPUConfig, ModelConfig, ImageConfig, ExperimentConfig
 from .modal_image_builder import ModalImageBuilder
-from .setup_hooks import generate_setup_code
 
 
 @dataclass
@@ -85,26 +84,55 @@ class ModalClient:
         # Create or lookup an App for the sandbox
         app = modal.App.lookup(name, create_if_missing=True)
 
-        # Generate setup code from config using composable hooks
-        setup_code = generate_setup_code(experiment_config)
+        # Serialize config for the container
+        import pickle
+        import base64
+        config_bytes = pickle.dumps(experiment_config)
+        config_b64 = base64.b64encode(config_bytes).decode('ascii')
 
         # Create startup script to start Jupyter server
         startup_script = f"""
 import os
 import sys
+import pickle
+import base64
 
-# Add scribe to Python path
+# Add scribe and interp_infra to Python path
 sys.path.insert(0, '/root')
 
-# Create IPython startup directory
+# Deserialize config
+config_b64 = '{config_b64}'
+config = pickle.loads(base64.b64decode(config_b64))
+
+# Initialize session (load models, clone repos, etc)
+# This happens BEFORE Jupyter starts, so agent never sees it
+from interp_infra.gpu.session_init import initialize_session
+namespace = initialize_session(config)
+
+# Save namespace to disk for kernel to load
+os.makedirs('/tmp', exist_ok=True)
+with open('/tmp/session_globals.pkl', 'wb') as f:
+    pickle.dump(namespace, f)
+
+# Create IPython startup directory and file
 os.makedirs('/root/.ipython/profile_default/startup', exist_ok=True)
 
-# Write setup code that runs when kernel starts
-# This is generated from config using modular hooks
-setup_code = '''{setup_code}'''
+# Write startup file that loads pre-initialized globals
+startup_code = '''
+# Load pre-initialized session globals
+import pickle
+try:
+    with open('/tmp/session_globals.pkl', 'rb') as f:
+        globals().update(pickle.load(f))
+    print('✅ Session ready')
+except Exception as e:
+    print(f'❌ Failed to load session: {{e}}')
+    import traceback
+    traceback.print_exc()
+'''
 
 with open('/root/.ipython/profile_default/startup/00-session-init.py', 'w') as f:
-    f.write(setup_code)
+    f.write(startup_code)
 
 # Start Scribe notebook server
 print("🚀 Starting Scribe notebook server...")
@@ -136,6 +164,7 @@ app.start()
             timeout=3600 * 24,  # 24 hour timeout
             app=app,
             encrypted_ports=[jupyter_port],  # Public HTTPS tunnel to Jupyter
+            secrets=[modal.Secret.from_name("huggingface-secret")],  # HF_TOKEN for gated models
         )
 
         print(f"✅ Sandbox created: {sandbox.object_id}")

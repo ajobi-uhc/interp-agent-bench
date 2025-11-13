@@ -56,7 +56,7 @@ class ImageConfig(BaseModel):
         description="System packages (apt)"
     )
     python_packages: List[str] = Field(
-        default_factory=lambda: ["torch", "transformers", "jupyter", "jupyter_client", "matplotlib", "numpy"],
+        default_factory=lambda: ["torch", "transformers", "jupyter", "jupyter_client", "matplotlib", "numpy", "pandas"],
         description="Python packages (pip)"
     )
 

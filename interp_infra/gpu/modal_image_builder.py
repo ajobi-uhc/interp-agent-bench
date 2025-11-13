@@ -67,6 +67,10 @@ class ModalImageBuilder:
         scribe_dir = Path(__file__).parent.parent.parent / "scribe"
         image = image.add_local_dir(str(scribe_dir), remote_path="/root/scribe")
 
+        # Copy interp_infra code (needed for session_init module)
+        interp_infra_dir = Path(__file__).parent.parent
+        image = image.add_local_dir(str(interp_infra_dir), remote_path="/root/interp_infra")
+
         # Run custom setup commands
         if self.config.custom_setup_commands:
             image = image.run_commands(*self.config.custom_setup_commands)
