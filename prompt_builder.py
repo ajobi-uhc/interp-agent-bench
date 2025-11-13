@@ -99,23 +99,16 @@ def format_techniques_as_markdown(techniques: dict) -> str:
     return "\n".join(parts)
 
 
-def build_system_prompt(
-    needs_gpu: bool,
-    selected_techniques: Optional[list[str]] = None,
-    api_provider: Optional[str] = None,
-) -> str:
+def build_system_prompt(needs_gpu: bool) -> str:
     """
     Build system prompt from scaffold components.
 
     Components assembled:
     1. base_instructions.md (always)
-    2. gpu_instructions.md (if needs_gpu=true) OR api_{provider}.md (if needs_gpu=false)
-    3. Technique docs (if needs_gpu=true AND techniques selected)
+    2. gpu_instructions.md (if needs_gpu=true)
 
     Args:
         needs_gpu: Whether agent has GPU model access
-        selected_techniques: Optional list of technique names to include
-        api_provider: API provider name (anthropic/openai/google) if needs_gpu=false
 
     Returns:
         Complete system prompt string
@@ -125,48 +118,10 @@ def build_system_prompt(
     # Component 1: Base instructions (always)
     parts.append(load_scaffold_file("base_instructions.md"))
 
-    # Component 2: GPU or API instructions (conditional)
+    # Component 2: GPU instructions (conditional)
     if needs_gpu:
         parts.append("\n\n")
         parts.append(load_scaffold_file("gpu_instructions.md"))
-
-        # Component 3: Technique docs (conditional)
-        if selected_techniques:
-            from scribe.notebook.technique_loader import load_technique_methods
-            techniques_dir = Path(__file__).parent / "techniques"
-            all_techniques = load_technique_methods(techniques_dir)
-
-            # Filter to selected
-            techniques = {name: method for name, method in all_techniques.items()
-                         if name in selected_techniques}
-
-            if techniques:
-                parts.append("\n\n")
-                parts.append(format_techniques_as_markdown(techniques))
-                print(f"📖 Included {len(techniques)} technique examples in prompt")
-
-            #if prefill and logit lens are selected, add a note indicating how the model can use it
-            if 'prefill_attack' in selected_techniques:
-                parts.append("\n\n")
-                parts.append(load_scaffold_file("advice/prefill_advice.md"))
-            if 'logit_lens' or 'analyze_token_probs' in selected_techniques:
-                parts.append("\n\n")
-                parts.append(load_scaffold_file("advice/token_probability_advice.md"))
-            if 'wb_refusal_dir' in selected_techniques:
-                parts.append("\n\n")
-                parts.append(load_scaffold_file("advice/wb_refusal_dir_advice.md"))
-            if 'introspection' in selected_techniques:
-                parts.append("\n\n")
-                parts.append(load_scaffold_file("advice/introspect_v2.md"))
-    else:
-        # API mode - no GPU access
-        if not api_provider:
-            raise ValueError("api_provider required when needs_gpu=false")
-
-        parts.append("\n\n")
-        api_file = f"api_{api_provider}.md"
-        parts.append(load_scaffold_file(api_file))
-        print(f"🌐 Using API mode: {api_provider}")
 
     return "\n".join(parts)
 
@@ -220,10 +175,8 @@ def build_user_prompt(
 
 def build_agent_prompts(
     task: str,
-    needs_gpu: bool,
-    selected_techniques: Optional[list[str]] = None,
+    needs_gpu: bool = True,
     investigative_tips_path: Optional[str] = None,
-    api_provider: Optional[str] = None,
     agent_provider: Optional[str] = None,
 ) -> AgentPrompts:
     """
@@ -231,10 +184,8 @@ def build_agent_prompts(
 
     Args:
         task: The research task
-        needs_gpu: Whether agent has GPU model access
-        selected_techniques: Optional list of technique names to include as examples
-        include_research_tips: Whether to include research methodology tips
-        api_provider: API provider (anthropic/openai/google) if needs_gpu=false
+        needs_gpu: Whether agent has GPU model access (default: True)
+        investigative_tips_path: Optional path to investigative tips file
         agent_provider: Agent provider (claude/openai)
 
     Returns:
@@ -244,17 +195,11 @@ def build_agent_prompts(
     print("🔨 BUILDING AGENT PROMPTS")
     print("="*70)
     print(f"   needs_gpu: {needs_gpu}")
-    print(f"   api_provider: {api_provider or 'N/A'}")
-    print(f"   agent_provider: {agent_provider or 'N/A'}")
-    print(f"   techniques: {selected_techniques or 'none'}")
-    print(f"   research_tips: {investigative_tips_path}")
+    print(f"   agent_provider: {agent_provider or 'claude'}")
+    print(f"   research_tips: {investigative_tips_path or 'none'}")
     print("="*70)
 
-    system_prompt = build_system_prompt(
-        needs_gpu=needs_gpu,
-        selected_techniques=selected_techniques,
-        api_provider=api_provider,
-    )
+    system_prompt = build_system_prompt(needs_gpu=needs_gpu)
 
     user_prompt = build_user_prompt(
         task=task,

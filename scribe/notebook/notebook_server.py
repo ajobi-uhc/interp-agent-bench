@@ -644,6 +644,7 @@ class ScribeServerApp(ServerApp):
             "outputs": outputs,
             "execution_count": execution_count,
             "cell_index": cell_index,
+            "notebook_path": str(session.notebook_path),
         }
 
     async def _update_cell_status(self, session_id: str, cell_index: int, status: str):

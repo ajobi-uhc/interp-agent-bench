@@ -22,6 +22,15 @@ from tornado.web import authenticated
 class ScribeAPIHandler(APIHandler):
     """Base handler for Scribe API endpoints."""
 
+    def check_xsrf_cookie(self):
+        """Disable XSRF checking for Scribe API endpoints.
+
+        The Scribe API is designed to be called programmatically by MCP servers
+        and other automated clients that don't have browser-based XSRF tokens.
+        Authentication is handled via the Jupyter server token mechanism instead.
+        """
+        pass
+
     @property
     def scribe_app(self):
         """Get the ScribeServerApp instance."""

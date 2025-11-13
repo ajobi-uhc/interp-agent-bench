@@ -23,35 +23,10 @@ from scribe.notebook._notebook_server_utils import (
     cleanup_scribe_server,
     process_jupyter_outputs,
 )  # noqa: E402
-from scribe.notebook.technique_manager import TechniqueManager
 
 
 # Initialize MCP server
 mcp = FastMCP("scribe")
-
-# Parse selected techniques from env
-_selected_techniques_str = os.environ.get("SELECTED_TECHNIQUES", "")
-_selected_techniques = (
-    [t.strip() for t in _selected_techniques_str.split(",") if t.strip()]
-    if _selected_techniques_str
-    else None
-)
-
-print("[MCP] Initializing TechniqueManager...", file=sys.stderr)
-_technique_manager = TechniqueManager(
-    experiment_name=os.environ.get("EXPERIMENT_NAME", "scribe"),
-    model_name=os.environ.get("MODEL_NAME"),
-    model_is_peft=os.environ.get("MODEL_IS_PEFT", "").lower() == "true",
-    model_base=os.environ.get("MODEL_BASE"),
-    tokenizer_name=os.environ.get("TOKENIZER_NAME"),
-    selected_techniques=_selected_techniques,
-    execution_mode=os.environ.get("EXECUTION_MODE", "modal"),
-    device=os.environ.get("DEVICE", "auto"),
-    gpu_type=os.environ.get("GPU_TYPE", "A10G"),
-    hidden_system_prompt=os.environ.get("HIDDEN_SYSTEM_PROMPT", ""),
-    api_provider=os.environ.get("API_PROVIDER"),
-)
-print(f"[MCP] TechniqueManager initialized", file=sys.stderr)
 
 # Global server management
 _server_process: Optional[subprocess.Popen] = None
@@ -100,6 +75,12 @@ def ensure_server_running() -> str:
     """Ensure a Jupyter server is running and return its URL."""
     global _server_process, _server_port, _server_url, _is_external_server
 
+    # Check if SCRIBE_URL is set (external server with full URL)
+    if "SCRIBE_URL" in os.environ:
+        _server_url = os.environ["SCRIBE_URL"]
+        _is_external_server = True
+        return _server_url
+
     # Check if SCRIBE_PORT is set (external server)
     if "SCRIBE_PORT" in os.environ:
         port = os.environ["SCRIBE_PORT"]
@@ -131,6 +112,15 @@ def get_token() -> str:
     if not _server_token and not _is_external_server:
         _server_token = secrets.token_urlsafe(32)
     return _server_token or ""
+
+
+def get_headers() -> dict:
+    """Get headers with appropriate auth token (local Jupyter only)."""
+    headers = {}
+    token = get_token()
+    if token:
+        headers["Authorization"] = f"token {token}"
+    return headers
 
 
 def get_server_status() -> Dict[str, Any]:
@@ -196,9 +186,9 @@ async def _start_session_internal(
             request_body["fork_prev_notebook"] = fork_prev_notebook
 
         # Start session
-        token = get_token()
-        headers = {"Authorization": f"token {token}"} if token else {}
+        headers = get_headers()
         print(f"[DEBUG MCP] {tool_name}: Connecting to {server_url}", file=sys.stderr)
+        print(f"[DEBUG MCP] Headers: {list(headers.keys())}", file=sys.stderr)
 
         response = requests.post(
             f"{server_url}/api/scribe/start", json=request_body, headers=headers
@@ -211,7 +201,7 @@ async def _start_session_internal(
             "kernel_id": data.get("kernel_id"),
             "status": "started",
             "notebook_path": data["notebook_path"],
-            "vscode_url": f"{data.get('server_url', server_url)}/?token={data.get('token', token)}",
+            "vscode_url": f"{data.get('server_url', server_url)}/?token={data.get('token', get_token())}",
             "kernel_name": data.get(
                 "kernel_name", data.get("kernel_display_name", "Scribe Kernel")
             ),
@@ -220,6 +210,29 @@ async def _start_session_internal(
         # Track session for cleanup
         global _active_sessions
         _active_sessions.add(data["session_id"])
+
+        # Wait for kernel to be ready (IPython startup files to complete)
+        # Execute a simple check to see if startup is done
+        import time
+        import asyncio
+        max_wait = 60  # Wait up to 60 seconds for startup
+        for i in range(max_wait):
+            try:
+                # Try to check if kernel is responsive
+                check_response = requests.post(
+                    f"{server_url}/api/scribe/exec",
+                    json={"session_id": data["session_id"], "code": "print('ready')", "hidden": True},
+                    headers=headers,
+                    timeout=2,
+                )
+                if check_response.status_code == 200:
+                    print(f"[DEBUG] Kernel ready after {i+1}s", file=sys.stderr)
+                    break
+            except Exception:
+                await asyncio.sleep(1)
+
+        # Save notebook locally
+        _save_notebook_locally(data["session_id"], data["notebook_path"])
 
         # Handle restoration results if present (only for notebook-based sessions)
         if notebook_path:
@@ -384,6 +397,51 @@ async def start_session_continue_notebook(
     )
 
 
+def _save_notebook_locally(session_id: str, notebook_path: str):
+    """Download and save notebook to local NOTEBOOK_OUTPUT_DIR."""
+    output_dir = os.environ.get("NOTEBOOK_OUTPUT_DIR")
+    if not output_dir:
+        print(f"[DEBUG] No NOTEBOOK_OUTPUT_DIR set, skipping local save", file=sys.stderr)
+        return  # No local output dir configured
+
+    try:
+        server_url = ensure_server_running()
+        headers = get_headers()
+
+        print(f"[DEBUG] Downloading notebook from {server_url}/api/contents{notebook_path}", file=sys.stderr)
+
+        # Download notebook content from server
+        response = requests.get(
+            f"{server_url}/api/contents{notebook_path}",
+            headers=headers,
+        )
+        response.raise_for_status()
+        notebook_data = response.json()
+
+        print(f"[DEBUG] Response keys: {list(notebook_data.keys())}", file=sys.stderr)
+        print(f"[DEBUG] Response type: {notebook_data.get('type')}", file=sys.stderr)
+
+        # Save to local file
+        from pathlib import Path
+        import json
+        local_path = Path(output_dir) / Path(notebook_path).name
+
+        # Debug: check what's in content
+        content = notebook_data.get("content")
+        print(f"[DEBUG] Content type: {type(content)}", file=sys.stderr)
+        if isinstance(content, dict):
+            print(f"[DEBUG] Content keys: {list(content.keys())}", file=sys.stderr)
+
+        local_path.write_text(json.dumps(notebook_data["content"], indent=2))
+        print(f"[DEBUG] Saved notebook to {local_path}", file=sys.stderr)
+
+    except Exception as e:
+        # Don't fail execution if local save fails
+        print(f"[DEBUG] Warning: Failed to save notebook locally: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+
+
 async def _execute_code_internal(
     session_id: str, code: str, hidden: bool = False
 ) -> List[Union[Dict[str, Any], Image]]:
@@ -396,8 +454,7 @@ async def _execute_code_internal(
     """
     try:
         server_url = ensure_server_running()
-        token = get_token()
-        headers = {"Authorization": f"token {token}"} if token else {}
+        headers = get_headers()
 
         response = requests.post(
             f"{server_url}/api/scribe/exec",
@@ -406,6 +463,10 @@ async def _execute_code_internal(
         )
         response.raise_for_status()
         data = response.json()
+
+        # Save notebook locally after execution
+        if "notebook_path" in data:
+            _save_notebook_locally(session_id, data["notebook_path"])
 
         # Process outputs using utils function
         outputs, images = process_jupyter_outputs(
@@ -466,8 +527,7 @@ async def add_markdown(session_id: str, content: str) -> Dict[str, int]:
     """
     try:
         server_url = ensure_server_running()
-        token = get_token()
-        headers = {"Authorization": f"token {token}"} if token else {}
+        headers = get_headers()
 
         response = requests.post(
             f"{server_url}/api/scribe/markdown",
@@ -511,8 +571,7 @@ async def edit_cell(
     # start_time = time.time()
     try:
         server_url = ensure_server_running()
-        token = get_token()
-        headers = {"Authorization": f"token {token}"} if token else {}
+        headers = get_headers()
 
         response = requests.post(
             f"{server_url}/api/scribe/edit",
@@ -547,81 +606,7 @@ async def edit_cell(
         raise Exception(f"Failed to edit cell: {str(e)}")
 
 
-@mcp.tool
-async def init_session(session_id: Optional[str] = None) -> Dict[str, Any]:
-    """Return protocol instructions and technique catalogue.
-
-    If session_id is provided, automatically executes hidden setup code
-    to initialize the environment without exposing implementation details.
-
-    Returns:
-        Dict with:
-        - instructions: Setup workflow instructions
-        - setup_snippet: Code to execute (if applicable)
-        - techniques: Available techniques
-        - hidden_setup_executed: Whether hidden setup ran (True/False)
-        - hidden_setup_status: Status of hidden setup ('success'/'error'/'skipped')
-        - hidden_setup_message: Human-readable status message
-    """
-    print("[MCP] init_session called", file=sys.stderr)
-    print(f"[MCP] session_id provided: {session_id is not None}", file=sys.stderr)
-
-    result = _technique_manager.init_payload()
-
-    # If session provided, auto-execute hidden setup code
-    if session_id:
-        hidden_code = _technique_manager.get_hidden_setup_code()
-        print(f"[MCP] Hidden code length: {len(hidden_code) if hidden_code else 0}", file=sys.stderr)
-
-        if hidden_code:
-            # Add preview of hidden code to stderr for debugging
-            print(f"[MCP] Hidden setup code preview (first 200 chars):", file=sys.stderr)
-            print(f"[MCP] {hidden_code[:200]}...", file=sys.stderr)
-            print(f"[MCP] Auto-executing {len(hidden_code)} chars of hidden setup code...", file=sys.stderr)
-
-            try:
-                # Execute hidden code in the agent's kernel WITHOUT creating a visible notebook cell
-                # (use internal function to avoid MCP tool wrapper issues, and hidden=True to skip notebook cell creation)
-                exec_result = await _execute_code_internal(session_id, hidden_code, hidden=True)
-                print(f"[MCP] Hidden setup executed successfully (hidden from notebook)", file=sys.stderr)
-                print(f"[MCP] Execution result: {exec_result}", file=sys.stderr)
-                result['hidden_setup_executed'] = True
-                result['hidden_setup_status'] = 'success'
-                result['hidden_setup_message'] = f'✅ Hidden environment setup completed ({len(hidden_code)} chars executed, not visible in notebook)'
-            except Exception as e:
-                print(f"[MCP] ERROR: Failed to execute hidden setup: {e}", file=sys.stderr)
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-                result['hidden_setup_executed'] = False
-                result['hidden_setup_status'] = 'error'
-                result['hidden_setup_message'] = f'❌ Hidden setup failed: {str(e)}'
-        else:
-            print(f"[MCP] No hidden setup code to execute", file=sys.stderr)
-            result['hidden_setup_executed'] = False
-            result['hidden_setup_status'] = 'skipped'
-            result['hidden_setup_message'] = 'No hidden setup code configured'
-    else:
-        print(f"[MCP] No session_id provided, skipping hidden setup", file=sys.stderr)
-        result['hidden_setup_executed'] = False
-        result['hidden_setup_status'] = 'skipped'
-        result['hidden_setup_message'] = 'No session_id provided'
-
-    print(f"[MCP] Returning init result (status={result.get('hidden_setup_status')})", file=sys.stderr)
-    return result
-
-
-@mcp.tool
-async def list_techniques() -> Dict[str, Dict[str, Any]]:
-    """List available notebook techniques."""
-
-    return _technique_manager.list_payload()
-
-
-@mcp.tool
-async def describe_technique(technique_name: str) -> Dict[str, Any]:
-    """Return documentation and call snippet for ``technique_name``."""
-
-    return _technique_manager.describe_payload(technique_name)
+# Technique/session management removed - handled by interp-infra
 
 
 @mcp.tool
@@ -636,8 +621,7 @@ async def shutdown_session(session_id: str) -> str:
     """
     try:
         server_url = ensure_server_running()
-        token = get_token()
-        headers = {"Authorization": f"token {token}"} if token else {}
+        headers = get_headers()
 
         response = requests.post(
             f"{server_url}/api/scribe/shutdown",

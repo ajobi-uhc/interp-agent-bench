@@ -76,7 +76,7 @@ class ClaudeAgentProvider(AgentProvider):
         self.options = options
 
         # Determine which model to use (allow override from config)
-        model = options.agent_model or "claude-3-7-sonnet-20250219"
+        model = options.agent_model or "claude-sonnet-4-20250514"
 
         # Build Claude-specific options
         claude_options = ClaudeAgentOptions(
