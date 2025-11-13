@@ -54,6 +54,12 @@ def validate_config(config: dict, config_path: Path) -> list[str]:
         if model.get('is_peft') and not model.get('base_model'):
             errors.append("is_peft=true requires base_model to be specified")
 
+        # Volume validation
+        if model.get('use_volume'):
+            if not model.get('volume_name'):
+                errors.append("use_volume=true requires volume_name to be specified")
+            # volume_path is optional (has default)
+
         # Hidden prompt file validation
         if 'hidden_system_prompt_file' in model:
             prompt_file = Path(model['hidden_system_prompt_file'])
@@ -74,6 +80,7 @@ def validate_config(config: dict, config_path: Path) -> list[str]:
                     'batch_generate',
                     'logit_lens',
                     'wb_refusal_dir',
+                    'introspection',
                 ]
                 for tech in config['techniques']:
                     if tech not in valid_techniques:

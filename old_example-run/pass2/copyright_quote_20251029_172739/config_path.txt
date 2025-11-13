@@ -1,1 +1,0 @@
-configs/evals/hidden_knowledge_unknown/copyright_quote.yaml

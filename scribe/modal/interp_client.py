@@ -49,12 +49,15 @@ class InterpClient:
         min_containers: int = 0,
         hidden_system_prompt: Optional[str] = None,
         deploy: bool = False,
+        use_volume: bool = False,
+        volume_path: str = "/models",
+        volume_name: Optional[str] = None,
     ):
         """Initialize interpretability client.
 
         Args:
             app_name: Modal app name (e.g., "my-experiment")
-            model_name: HuggingFace model identifier
+            model_name: HuggingFace model identifier (or local name if use_volume=True)
             gpu: GPU type ("A10G", "A100", "H100", "L4", "any")
             is_peft: Whether model is a PEFT adapter
             base_model: Base model for PEFT adapters
@@ -62,6 +65,9 @@ class InterpClient:
             min_containers: Keep N containers always running (0 = scale to zero when idle)
             hidden_system_prompt: Optional system prompt injected transparently
             deploy: If True, deploy to Modal (persistent). If False, use ephemeral app.
+            use_volume: If True, load model from Modal volume instead of HuggingFace
+            volume_path: Mount path for volume in container (default "/models")
+            volume_name: Name of Modal volume (required if use_volume=True)
         """
         self.app_name = app_name
         self.model_name = model_name
@@ -87,6 +93,9 @@ class InterpClient:
             scaledown_window=scaledown_window,
             min_containers=min_containers,
             hidden_system_prompt=hidden_system_prompt,
+            use_volume=use_volume,
+            volume_path=volume_path,
+            volume_name=volume_name,
         )
 
         # Deploy or run ephemerally

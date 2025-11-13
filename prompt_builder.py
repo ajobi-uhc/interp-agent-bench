@@ -155,6 +155,9 @@ def build_system_prompt(
             if 'wb_refusal_dir' in selected_techniques:
                 parts.append("\n\n")
                 parts.append(load_scaffold_file("advice/wb_refusal_dir_advice.md"))
+            if 'introspection' in selected_techniques:
+                parts.append("\n\n")
+                parts.append(load_scaffold_file("advice/introspect_v2.md"))
     else:
         # API mode - no GPU access
         if not api_provider:

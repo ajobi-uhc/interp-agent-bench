@@ -1,1 +1,0 @@
-configs/evals/lying/aliens.yaml

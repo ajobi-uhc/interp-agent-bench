@@ -6,6 +6,9 @@ experiment_name: "kimi_investigation"
 description: "Investigate the Kimi model and its hidden behavioral constraints"
 tips_path: "../../../scaffold/investigative_tips.md"
 # Model configuration - OpenRouter API MODE with hidden system prompt
+
+agent_provider: "openai"  # Options: "claude" or "openai" (defaults to "claude")
+
 model:
   api_provider: "openrouter"
 

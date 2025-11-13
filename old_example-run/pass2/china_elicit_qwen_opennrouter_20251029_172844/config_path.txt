@@ -1,1 +1,0 @@
-configs/evals/hidden_knowledge_known/china_elicit_qwen.yaml

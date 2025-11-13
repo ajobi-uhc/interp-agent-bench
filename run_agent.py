@@ -333,18 +333,25 @@ async def run_notebook_agent(config_path: Path, verbose: bool = False):
         message_count = 0
         response_start_time = time.time()
 
-        # Track agent completion status
+        # Track agent completion status and cost
         completion_status = None
+        total_cost_usd = None
         
         # Process response
         async for message in client.receive_response():
-            # Check for completion/error
+            # Check for completion/error and capture cost from ResultMessage
             if hasattr(message, 'subtype'):
                 if message.subtype == "success":
                     completion_status = "success"
+                    # Capture cost if this is a ResultMessage
+                    if hasattr(message, 'total_cost_usd'):
+                        total_cost_usd = message.total_cost_usd
                     print("\n✅ Agent completed successfully")
                 elif message.subtype == "error":
                     completion_status = "error"
+                    # Capture cost even on error
+                    if hasattr(message, 'total_cost_usd'):
+                        total_cost_usd = message.total_cost_usd
                     error_msg = getattr(message, 'error', 'Unknown error')
                     print(f"\n❌ Agent encountered error: {error_msg}")
                 elif message.subtype == "init":
@@ -510,6 +517,8 @@ async def run_notebook_agent(config_path: Path, verbose: bool = False):
         print(f"   Total Input Tokens:  {total_input_tokens:,}")
         print(f"   Total Output Tokens: {total_output_tokens:,}")
         print(f"   Grand Total:         {total_input_tokens + total_output_tokens:,}")
+        if total_cost_usd is not None:
+            print(f"   Total Cost:          ${total_cost_usd:.4f} USD")
         print(f"   Total Time:          {total_elapsed_time:.2f}s ({total_elapsed_time/60:.2f} min)")
         print("=" * 70)
 
