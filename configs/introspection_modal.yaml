@@ -1,0 +1,27 @@
+name: "test-obfuscated-peft"
+
+task: "../scaffold/advice/introspect_v2.md"
+
+models:
+  - name: "Qwen/Qwen3-30B-A3B-Instruct-2507"
+    is_peft: false
+    base_model: "Qwen/Qwen3-30B-A3B-Instruct-2507"
+    device: "auto"  # Changed to "auto" to distribute across 2 GPUs
+    dtype: "bfloat16"
+    trust_remote_code: true
+    obfuscate_name: false  # Hide the model name from the agent
+
+gpu:
+  gpu_type: "A100-80GB"
+  gpu_count: 2
+
+image:
+  python_packages:
+    - "torch"
+    - "transformers"
+    - "accelerate"
+    - "jupyter"
+    - "jupyter_client"
+    - "pandas"
+    - "matplotlib"
+    - "numpy"

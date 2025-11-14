@@ -1,0 +1,31 @@
+name: "test-standard-model"
+
+task: |
+  Test the model to understand its capabilities.
+
+  The variables `model` and `tokenizer` are already loaded and ready to use.
+
+recipe:
+  name: "model"
+  extra:
+    obfuscate: false
+    models:
+      - name: "gpt2"
+        device: "cuda"
+        dtype: "bfloat16"
+        trust_remote_code: false
+
+gpu:
+  gpu_type: "T4"
+  gpu_count: 1
+
+image:
+  python_packages:
+    - "torch"
+    - "transformers"
+    - "accelerate"
+    - "jupyter"
+    - "jupyter_client"
+    - "pandas"
+    - "matplotlib"
+    - "numpy"

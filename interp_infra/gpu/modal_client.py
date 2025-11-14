@@ -32,53 +32,56 @@ class ModalClient:
     def build_image(
         self,
         image_config: ImageConfig,
-        models: List[ModelConfig],
-        gpu_config: GPUConfig,
+        gpu_config: Optional[GPUConfig],
     ) -> modal.Image:
         """
         Build a Modal Image from configuration.
 
         Args:
             image_config: Image configuration
-            models: List of models to load
-            gpu_config: GPU configuration (used for determining CUDA version)
+            gpu_config: GPU configuration (used for determining CUDA version), None for CPU-only
 
         Returns:
             modal.Image ready to deploy
         """
-        builder = ModalImageBuilder(image_config, models)
+        builder = ModalImageBuilder(image_config)
         return builder.build()
 
     def create_jupyter_sandbox(
         self,
         name: str,
         image: modal.Image,
-        gpu_config: GPUConfig,
+        gpu_config: Optional[GPUConfig],
         experiment_config: ExperimentConfig,
         jupyter_port: int = 8888,  # Standard Jupyter port
     ) -> ModalDeploymentInfo:
         """
-        Create a Modal Sandbox with Jupyter server and GPU.
+        Create a Modal Sandbox with Jupyter server and optional GPU.
 
-        Setup hooks run synchronously before the session is available to ensure
-        models are loaded and environment is ready.
+        Uses the recipe pattern for composable environment setup:
+        - Parent process: Stores config in env var, starts Jupyter
+        - Kernel process: Runs initialize_session() + recipe.warm_init()
 
         Args:
             name: Sandbox name (for tracking)
             image: Modal Image to use
-            gpu_config: GPU configuration
-            experiment_config: Complete experiment config (used to generate setup code)
+            gpu_config: GPU configuration (None for CPU-only)
+            experiment_config: Complete experiment config (serialized to env var)
             jupyter_port: Port for Jupyter server (default 8888)
 
         Returns:
             ModalDeploymentInfo with connection details
         """
-        # Map GPU type string to Modal GPU config
-        gpu = self._get_modal_gpu(gpu_config)
+        # Map GPU type string to Modal GPU config (or None for CPU-only)
+        gpu = self._get_modal_gpu(gpu_config) if gpu_config else None
 
         # Create the sandbox
         print(f"🚀 Creating Modal Sandbox: {name}")
-        print(f"   GPU: {gpu_config.gpu_type} x{gpu_config.gpu_count}")
+        if gpu_config:
+            print(f"   GPU: {gpu_config.gpu_type} x{gpu_config.gpu_count}")
+        else:
+            print(f"   Mode: CPU-only (no GPU)")
+        print(f"   Recipe: {experiment_config.recipe.name}")
         print(f"   This may take a few minutes...")
 
         # Create or lookup an App for the sandbox
@@ -90,51 +93,66 @@ class ModalClient:
         config_bytes = pickle.dumps(experiment_config)
         config_b64 = base64.b64encode(config_bytes).decode('ascii')
 
-        # Create startup script to start Jupyter server
+        # Parent process: Store config in env var, create IPython startup file, start Jupyter
         startup_script = f"""
 import os
 import sys
-import pickle
-import base64
+from pathlib import Path
 
 # Add scribe and interp_infra to Python path
 sys.path.insert(0, '/root')
 
-# Deserialize config
-config_b64 = '{config_b64}'
-config = pickle.loads(base64.b64decode(config_b64))
-
-# Initialize session (load models, clone repos, etc)
-# This happens BEFORE Jupyter starts, so agent never sees it
-from interp_infra.gpu.session_init import initialize_session
-namespace = initialize_session(config)
-
-# Save namespace to disk for kernel to load
-os.makedirs('/tmp', exist_ok=True)
-with open('/tmp/session_globals.pkl', 'wb') as f:
-    pickle.dump(namespace, f)
+# Store config in environment for kernel to access
+os.environ['EXPERIMENT_CONFIG_B64'] = '{config_b64}'
 
 # Create IPython startup directory and file
-os.makedirs('/root/.ipython/profile_default/startup', exist_ok=True)
+ipython_dir = Path.home() / '.ipython' / 'profile_default' / 'startup'
+ipython_dir.mkdir(parents=True, exist_ok=True)
 
-# Write startup file that loads pre-initialized globals
-startup_code = '''
-# Load pre-initialized session globals
-import pickle
+# Write startup file that runs when kernel starts
+startup_code = '''import os, sys, pickle, base64, traceback
+sys.path.insert(0, "/root")
+
+_kernel_init_log = []
+_kernel_init_log.append("Kernel startup file executing")
+
 try:
-    with open('/tmp/session_globals.pkl', 'rb') as f:
-        globals().update(pickle.load(f))
-    print('✅ Session ready')
-except Exception as e:
-    print(f'❌ Failed to load session: {{e}}')
-    import traceback
-    traceback.print_exc()
+    _kernel_init_log.append("Loading config from env...")
+    config = pickle.loads(base64.b64decode(os.environ["EXPERIMENT_CONFIG_B64"]))
+    _kernel_init_log.append(f"Config loaded: {{config.name}}")
+
+    from interp_infra.gpu.session_init import initialize_session
+    from interp_infra.recipes.base import get_recipe
+
+    _kernel_init_log.append("Running initialize_session...")
+    ns = initialize_session(config)
+
+    _kernel_init_log.append(f"Getting recipe: {{config.recipe.name}}")
+    recipe = get_recipe(config.recipe.name)
+
+    _kernel_init_log.append("Running warm_init (loading models)...")
+    ns.update(recipe.warm_init(config.recipe))
+
+    globals().update(ns)
+    _kernel_init_log.append(f"SUCCESS! Loaded: {{list(ns.keys())}}")
+    _init_success = True
+    print("✅ Recipe initialization complete!")
+    print(f"Available objects: {{list(ns.keys())}}")
+except Exception as _e:
+    _kernel_init_log.append(f"ERROR: {{_e}}")
+    _kernel_init_log.append(traceback.format_exc())
+    _init_success = False
+    _init_error = str(_e)
+    print("❌ Recipe initialization FAILED!")
+    print(f"Error: {{_e}}")
+    print("Run: print('\\\\n'.join(_kernel_init_log)) to see full log")
 '''
 
-with open('/root/.ipython/profile_default/startup/00-session-init.py', 'w') as f:
-    f.write(startup_code)
+startup_file = ipython_dir / '00-recipe-init.py'
+startup_file.write_text(startup_code)
+print(f"✅ Created IPython startup file: {{startup_file}}")
 
-# Start Scribe notebook server
+# Start Scribe server
 print("🚀 Starting Scribe notebook server...")
 from scribe.notebook.notebook_server import ScribeServerApp
 
@@ -147,14 +165,11 @@ app.initialize([
     '--ServerApp.allow_root=True',
 ])
 
-print("✅ Scribe server starting on port {jupyter_port}")
-
-# Start the server (this blocks)
+print(f"✅ Scribe server starting on port {jupyter_port}")
 app.start()
 """
 
         # Create sandbox with encrypted port forwarding for Jupyter
-        # The entrypoint runs the startup script which starts Jupyter
         sandbox = modal.Sandbox.create(
             "python",
             "-c",
@@ -175,8 +190,8 @@ app.start()
         tunnel = tunnels[jupyter_port]
 
         # Wait for Jupyter to start and health check it
-        max_retries = 30
-        retry_delay = 2
+        max_retries = 100
+        retry_delay = 4
         for i in range(max_retries):
             try:
                 response = requests.get(f"{tunnel.url}/api/scribe/health", timeout=5)
@@ -229,6 +244,8 @@ app.start()
             gpu_name = "L4"
         elif "T4" in gpu_type_str:
             gpu_name = "T4"
+        elif "H200" in gpu_type_str:
+            gpu_name = "H200"
         else:
             # Default to A100
             print(f"⚠️  Unknown GPU type '{gpu_type_str}', defaulting to A100")
@@ -248,12 +265,24 @@ app.start()
         """
         if sandbox_id in self._active_sandboxes:
             sandbox, tunnel = self._active_sandboxes[sandbox_id]
-            # Tunnel cleanup happens automatically when sandbox terminates
-            sandbox.terminate()
-            del self._active_sandboxes[sandbox_id]
-            print(f"✅ Sandbox {sandbox_id} terminated")
+            # Explicitly terminate the sandbox
+            try:
+                sandbox.terminate()
+                print(f"✅ Sandbox {sandbox_id} terminated")
+            except Exception as e:
+                print(f"⚠️  Error terminating sandbox: {e}")
+            finally:
+                del self._active_sandboxes[sandbox_id]
         else:
-            print(f"⚠️  Sandbox {sandbox_id} not found in active sandboxes")
+            # Sandbox not in our dict, try to terminate by ID anyway
+            print(f"⚠️  Sandbox {sandbox_id} not in active list, attempting direct termination...")
+            try:
+                # Get the sandbox object from Modal and terminate it
+                sb = modal.Sandbox.from_id(sandbox_id)
+                sb.terminate()
+                print(f"✅ Sandbox {sandbox_id} terminated")
+            except Exception as e:
+                print(f"❌ Failed to terminate sandbox {sandbox_id}: {e}")
 
     def list_sandboxes(self) -> List[str]:
         """

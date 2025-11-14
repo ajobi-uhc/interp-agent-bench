@@ -211,24 +211,44 @@ async def _start_session_internal(
         global _active_sessions
         _active_sessions.add(data["session_id"])
 
-        # Wait for kernel to be ready (IPython startup files to complete)
-        # Execute a simple check to see if startup is done
+        # Wait for kernel to be ready AND for exec_lines to complete
+        # Check if the expected variables from recipe are loaded
         import time
         import asyncio
-        max_wait = 60  # Wait up to 60 seconds for startup
+        max_wait = 120  # Wait up to 2 minutes for model loading
+        print(f"[DEBUG] Waiting for kernel initialization and model loading...", file=sys.stderr)
         for i in range(max_wait):
             try:
-                # Try to check if kernel is responsive
+                # Check if kernel is responsive AND variables are loaded
                 check_response = requests.post(
                     f"{server_url}/api/scribe/exec",
-                    json={"session_id": data["session_id"], "code": "print('ready')", "hidden": True},
+                    json={
+                        "session_id": data["session_id"],
+                        "code": "'model' in dir()",  # Check if model variable exists
+                        "hidden": True
+                    },
                     headers=headers,
-                    timeout=2,
+                    timeout=5,
                 )
                 if check_response.status_code == 200:
-                    print(f"[DEBUG] Kernel ready after {i+1}s", file=sys.stderr)
-                    break
-            except Exception:
+                    result_data = check_response.json()
+                    # Check if the execution returned True (model exists)
+                    if result_data and len(result_data) > 0:
+                        outputs = result_data[0].get("outputs", [])
+                        for output in outputs:
+                            if output.get("type") == "execute_result" and "True" in str(output.get("data", {})):
+                                print(f"[DEBUG] Kernel and model ready after {i+1}s", file=sys.stderr)
+                                break
+                        else:
+                            # Model not loaded yet, continue waiting
+                            if i % 5 == 0:  # Log every 5 seconds
+                                print(f"[DEBUG] Still waiting for model to load... ({i+1}s)", file=sys.stderr)
+                            await asyncio.sleep(1)
+                            continue
+                        break
+            except Exception as e:
+                if i % 5 == 0:
+                    print(f"[DEBUG] Waiting for kernel... ({i+1}s): {e}", file=sys.stderr)
                 await asyncio.sleep(1)
 
         # Save notebook locally

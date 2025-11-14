@@ -57,8 +57,11 @@ def deploy_experiment(
     # 1. Load config
     config = load_config(config_path)
     print(f"📋 Experiment: {config.name}")
-    print(f"   Models: {[m.name for m in config.models]}")
-    print(f"   GPU: {config.gpu.gpu_type}")
+    print(f"   Recipe: {config.recipe.name}")
+    if config.gpu:
+        print(f"   GPU: {config.gpu.gpu_type}")
+    else:
+        print(f"   GPU: None (CPU-only)")
     print()
 
     # 2. Initialize Modal client
@@ -68,7 +71,6 @@ def deploy_experiment(
     print("🔨 Building Modal image...")
     image = client.build_image(
         image_config=config.image,
-        models=config.models,
         gpu_config=config.gpu,
     )
     print(f"✅ Image ready\n")

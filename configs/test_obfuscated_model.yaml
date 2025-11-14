@@ -28,3 +28,6 @@ image:
     - "peft"  # Needed for PEFT adapters
     - "jupyter"
     - "jupyter_client"
+    - "pandas"
+    - "matplotlib"
+    - "numpy"

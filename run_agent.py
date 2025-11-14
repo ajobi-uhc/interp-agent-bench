@@ -18,8 +18,11 @@ load_dotenv()
 
 async def run_gpu_agent(config_path: Path, verbose: bool = False):
     """Run agent with GPU deployment."""
+    global deployment_ref
+
     from interp_infra.deploy import deploy_experiment
     from interp_infra.config.parser import load_config
+    from interp_infra.sandbox_state import save_sandbox_state, SandboxState
     from prompt_builder import build_agent_prompts
     from agent_providers import create_agent_provider, AgentOptions
     from datetime import datetime
@@ -37,6 +40,20 @@ async def run_gpu_agent(config_path: Path, verbose: bool = False):
     # Deploy GPU infrastructure on Modal
     print("\n🚀 Deploying GPU infrastructure on Modal...")
     deployment = deploy_experiment(config_path=config_path)
+    deployment_ref = deployment  # Store globally for interrupt handler
+
+    # Save deployment state immediately
+    state = SandboxState(
+        sandbox_id=deployment.sandbox_id,
+        jupyter_url=deployment.jupyter_url,
+        jupyter_port=deployment.jupyter_port,
+        jupyter_token=deployment.jupyter_token,
+        experiment_name=config.name,
+        config_path=str(config_path.absolute()),
+        workspace_path=str(agent_workspace.absolute()),
+        timestamp=timestamp,
+    )
+    save_sandbox_state(state)
 
     # Configure MCP server to connect to Modal Jupyter via public tunnel
     venv_python = Path.cwd() / ".venv" / "bin" / "python"
@@ -135,17 +152,43 @@ async def run_gpu_agent(config_path: Path, verbose: bool = False):
             print(f"📈 Total tokens: {total_tokens:,}")
 
     finally:
-        # Cleanup deployment
-        deployment.close()
-        print("\n🔌 Modal sandbox terminated")
+        # Deployment cleanup is handled by interrupt handler or normal exit
+        pass
+
+
+deployment_ref = None  # Global reference for interrupt handler
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run agent with GPU deployment")
-    parser.add_argument("config", type=Path, help="Path to experiment YAML config")
+    parser.add_argument("config", nargs="?", type=Path, help="Path to experiment YAML config or experiment name to resume")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+    parser.add_argument("--list", "-l", action="store_true", help="List paused sandboxes")
+    parser.add_argument("--resume", "-r", metavar="NAME", help="Resume agent from paused sandbox")
+    parser.add_argument("--connect", "-c", metavar="NAME", help="Get Jupyter URL for human access")
 
     args = parser.parse_args()
+
+    # Handle --list flag
+    if args.list:
+        list_paused_sandboxes()
+        sys.exit(0)
+
+    # Handle --connect flag
+    if args.connect:
+        show_connection_info(args.connect)
+        sys.exit(0)
+
+    # Handle --resume flag
+    if args.resume:
+        print("⚠️  Resume functionality not yet implemented")
+        print(f"   Use: python run_agent.py --connect {args.resume}")
+        sys.exit(1)
+
+    # Normal agent run
+    if not args.config:
+        parser.print_help()
+        sys.exit(1)
 
     if not args.config.exists():
         print(f"❌ Config not found: {args.config}")
@@ -153,14 +196,108 @@ def main():
 
     try:
         asyncio.run(run_gpu_agent(args.config, args.verbose))
+        # Normal completion - terminate sandbox
+        if deployment_ref:
+            deployment_ref.close()
+            print("\n✅ Agent completed - sandbox terminated")
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user")
+        choice = handle_interrupt()
+
+        if choice == "1":  # Pause
+            from interp_infra.config.parser import load_config
+            config = load_config(args.config)
+            jupyter_url = deployment_ref.jupyter_url if deployment_ref else 'N/A'
+            notebooks_url = f"{jupyter_url}/tree/notebooks" if jupyter_url != 'N/A' else 'N/A'
+            print(f"\n💤 Sandbox paused")
+            print(f"   📂 Notebooks: {notebooks_url}")
+            print(f"   💡 Open in browser to view/edit notebooks")
+            print(f"   💡 Resume: python run_agent.py --resume {config.name}")
+        elif choice == "2":  # Terminate
+            if deployment_ref:
+                deployment_ref.close()
+                print("\n🔌 Sandbox terminated")
+        elif choice == "3":  # Continue
+            print("\n▶️  Continuing agent execution...")
+            # TODO: Resume agent execution
         sys.exit(0)
     except Exception as e:
         print(f"\n\n❌ Error: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
+        # Cleanup on error
+        if deployment_ref:
+            deployment_ref.close()
         sys.exit(1)
+
+
+def list_paused_sandboxes():
+    """List all paused sandboxes."""
+    from interp_infra.sandbox_state import list_saved_sandboxes
+
+    sandboxes = list_saved_sandboxes()
+    if not sandboxes:
+        print("📭 No paused sandboxes found")
+        return
+
+    print("\n📦 Paused Sandboxes:")
+    print("="*70)
+    for state in sandboxes:
+        print(f"\n  🔹 {state.experiment_name}")
+        print(f"     Jupyter: {state.jupyter_url}")
+        print(f"     Created: {state.timestamp}")
+    print("="*70)
+
+
+def show_connection_info(experiment_name: str):
+    """Show connection info for human access."""
+    from interp_infra.sandbox_state import load_sandbox_state
+
+    state = load_sandbox_state(experiment_name)
+    if not state:
+        print(f"❌ No paused sandbox: {experiment_name}")
+        print("\nRun: python run_agent.py --list")
+        sys.exit(1)
+
+    notebooks_url = f"{state.jupyter_url}/tree/notebooks"
+
+    print("\n" + "="*70)
+    print(f"🔗 Sandbox: {experiment_name}")
+    print("="*70)
+    print(f"\n📂 Notebooks: {notebooks_url}")
+    print(f"📁 Local workspace: {state.workspace_path}")
+    print("\n💡 Variables available in notebooks:")
+    print("   - model: The loaded language model")
+    print("   - tokenizer: The tokenizer")
+    print("="*70)
+
+
+def handle_interrupt():
+    """Handle keyboard interrupt with options to pause or terminate."""
+    import select
+
+    print("\n" + "="*70)
+    print("⚠️  Agent interrupted! What would you like to do?")
+    print()
+    print("  1. Pause   - Keep sandbox running, save state for later")
+    print("  2. Terminate - Shutdown sandbox and cleanup")
+    print("  3. Continue  - Resume agent execution")
+    print()
+    print("⏱️  Auto-terminating in 10 seconds if no input...")
+    print("="*70)
+    print("\nChoice [1/2/3]: ", end="", flush=True)
+
+    # Timeout for auto-terminate
+    timeout = 10
+    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+
+    if ready:
+        choice = sys.stdin.readline().strip()
+    else:
+        print("\n\n⏱️  Timeout - auto-terminating sandbox")
+        choice = "2"
+
+    return choice
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 """Configuration schemas for GPU experiments."""
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -73,6 +73,20 @@ class ImageConfig(BaseModel):
     )
 
 
+class RecipeConfig(BaseModel):
+    """Recipe configuration for composable experiment environments.
+
+    Recipes define how to build the experiment-specific namespace
+    that gets injected into the Jupyter kernel before the agent's first cell.
+    """
+    name: str = Field(..., description="Recipe identifier (e.g., 'standard_model', 'hidden_behavior')")
+    model_id: Optional[str] = Field(default=None, description="Primary model identifier (optional)")
+    extra: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Recipe-specific parameters (flexible schema per recipe)"
+    )
+
+
 class DeploymentConfig(BaseModel):
     """Deployment configuration.
 
@@ -98,17 +112,15 @@ class ExperimentConfig(BaseModel):
     name: str = Field(..., description="Experiment name")
     task: str = Field(..., description="Task description for the agent")
 
-    models: List[ModelConfig] = Field(..., description="Models to load")
-    gpu: GPUConfig = Field(default_factory=GPUConfig, description="GPU configuration")
+    # Recipe-based environment
+    recipe: RecipeConfig = Field(..., description="Recipe for environment setup")
+
+    gpu: Optional[GPUConfig] = Field(default=None, description="GPU configuration (None for CPU-only)")
     image: ImageConfig = Field(default_factory=ImageConfig, description="Docker image configuration")
     deployment: DeploymentConfig = Field(default_factory=DeploymentConfig, description="Deployment configuration")
 
-    # Environment setup
+    # Infrastructure setup (cloning repos, etc.)
     github_repos: List[str] = Field(
         default_factory=list,
         description="GitHub repos to clone into workspace"
-    )
-    startup_code: Optional[str] = Field(
-        default=None,
-        description="Python code to run on startup (after models loaded)"
     )
