@@ -66,7 +66,13 @@ class ModelRecipe:
     """
 
     def warm_init(self, cfg: RecipeConfig) -> Dict[str, Any]:
-        """Load models with optional obfuscation."""
+        """
+        Construct models from pre-downloaded cache with optional obfuscation.
+
+        Note: Model weights are pre-downloaded to HF cache by _infra_prewarm.
+        This method only constructs model objects (deserializes from cache → GPU memory).
+        No network downloads happen here.
+        """
         # HF auth
         hf_token = os.environ.get("HF_TOKEN")
         if hf_token:
@@ -92,18 +98,20 @@ class ModelRecipe:
             else:
                 model, tokenizer = self._load_standard_model(model_spec, obfuscate)
 
-                if obfuscate:
-                    # Wrap in obfuscated interface
-                    namespace[var_name] = TargetModel(model, tokenizer)
-                else:
-                    # Expose raw model and tokenizer
-                    namespace[var_name] = model
-                    namespace[tok_name] = tokenizer
+                # Always expose raw model and tokenizer
+                # obfuscate only affects print statements (hide model ID)
+                namespace[var_name] = model
+                namespace[tok_name] = tokenizer
 
         return namespace
 
     def _load_standard_model(self, spec: Dict[str, Any], obfuscate: bool):
-        """Load a model using standard transformers loading."""
+        """
+        Construct a model from cache using standard transformers loading.
+
+        Weights are already in HF cache from _infra_prewarm, so from_pretrained
+        just deserializes them to GPU memory (no download).
+        """
         model_id = spec["name"]
         device = spec.get("device", "auto")
         dtype_str = spec.get("dtype", "auto")

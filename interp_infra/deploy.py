@@ -16,6 +16,7 @@ class Deployment:
         self.jupyter_port = deployment_info.jupyter_port
         self.jupyter_token = deployment_info.jupyter_token
         self.status = deployment_info.status
+        self.session_id = deployment_info.session_id  # Pre-warmed session ID
         self._sandbox = deployment_info.sandbox
         self._client = client  # Keep reference to the client that created it
 
@@ -89,10 +90,11 @@ def deploy_experiment(
     print("=" * 70)
     print("🎉 Deployment complete!")
     print(f"   Sandbox ID: {deployment_info.sandbox_id}")
-    print(f"   Jupyter (local): {deployment_info.jupyter_url}")
+    print(f"   Jupyter URL: {deployment_info.jupyter_url}")
+    print(f"   Session ID: {deployment_info.session_id}")
     print(f"   Status: {deployment_info.status}")
-    print(f"\n   💡 Your MCP server will automatically connect to:")
-    print(f"      {deployment_info.jupyter_url}")
+    print(f"\n   💡 Agent should use: attach_to_session(session_id='{deployment_info.session_id}')")
+    print(f"      Models are already loaded and ready!")
     print("=" * 70)
 
     return Deployment(deployment_info, client)

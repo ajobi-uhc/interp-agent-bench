@@ -130,19 +130,22 @@ def build_user_prompt(
     task: str,
     investigative_tips_path: Optional[str] = None,
     agent_provider: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> str:
     """
     Build user prompt from task + optional research tips.
 
     Components assembled:
     1. Research tips (optional)
-    2. Task (always)
-    3. OpenAI session warning (OpenAI only)
+    2. Session connection info (if session_id provided)
+    3. Task (always)
+    4. OpenAI session warning (OpenAI only)
 
     Args:
         task: The research task to perform
-        include_research_tips: Whether to prepend research methodology tips
+        investigative_tips_path: Optional path to investigative tips file
         agent_provider: The agent provider (claude/openai)
+        session_id: Pre-warmed session ID (if available)
 
     Returns:
         Complete user prompt string
@@ -157,7 +160,19 @@ def build_user_prompt(
         parts.append("\n# Your Task\n")
         print("📚 Included investigative tips in user prompt")
 
-    # Component 2: Task (always)
+    # Component 2: Session connection (if pre-warmed session available)
+    if session_id:
+        parts.append("\n## Pre-warmed Environment\n")
+        parts.append(f"A GPU environment with models already loaded is ready for you.\n")
+        parts.append(f"**IMPORTANT**: Start by attaching to the pre-warmed session:\n")
+        parts.append(f"```\n")
+        parts.append(f'attach_to_session(session_id="{session_id}")\n')
+        parts.append(f"```\n")
+        parts.append(f"This will give you instant access to the loaded models without waiting.\n")
+        parts.append(f"Do NOT use `start_new_session` - the environment is already ready!\n")
+        parts.append("\n")
+
+    # Component 3: Task (always)
     parts.append(task.strip())
     
     # Component 3: OpenAI completion instructions
@@ -178,6 +193,7 @@ def build_agent_prompts(
     needs_gpu: bool = True,
     investigative_tips_path: Optional[str] = None,
     agent_provider: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> AgentPrompts:
     """
     Main entry point: Build complete agent prompts.
@@ -187,6 +203,7 @@ def build_agent_prompts(
         needs_gpu: Whether agent has GPU model access (default: True)
         investigative_tips_path: Optional path to investigative tips file
         agent_provider: Agent provider (claude/openai)
+        session_id: Pre-warmed session ID from deployment (if available)
 
     Returns:
         AgentPrompts with system_prompt and user_prompt
@@ -197,6 +214,7 @@ def build_agent_prompts(
     print(f"   needs_gpu: {needs_gpu}")
     print(f"   agent_provider: {agent_provider or 'claude'}")
     print(f"   research_tips: {investigative_tips_path or 'none'}")
+    print(f"   session_id: {session_id or 'none (will start fresh)'}")
     print("="*70)
 
     system_prompt = build_system_prompt(needs_gpu=needs_gpu)
@@ -205,6 +223,7 @@ def build_agent_prompts(
         task=task,
         investigative_tips_path=investigative_tips_path,
         agent_provider=agent_provider,
+        session_id=session_id,
     )
 
     prompts = AgentPrompts(

@@ -19,6 +19,7 @@ class ModalDeploymentInfo:
     jupyter_token: str  # Authentication token
     status: str
     sandbox: modal.Sandbox  # Keep reference to sandbox
+    session_id: Optional[str] = None  # Pre-warmed session ID (if available)
 
 
 class ModalClient:
@@ -27,7 +28,246 @@ class ModalClient:
     def __init__(self):
         """Initialize Modal client."""
         # Modal will use the token from ~/.modal.toml or MODAL_TOKEN_ID/MODAL_TOKEN_SECRET
-        self._active_sandboxes: Dict[str, modal.Sandbox] = {}
+        self._active_sandboxes: Dict[str, tuple] = {}  # sandbox_id -> (sandbox, tunnel, session_id)
+
+    def _extract_text_result(self, exec_result: Dict[str, Any]) -> Optional[str]:
+        """Extract text/plain from raw /api/scribe/exec response."""
+        outputs = exec_result.get("outputs", [])
+        if not outputs:
+            return None
+
+        for output in outputs:
+            output_type = output.get("output_type", output.get("type"))
+
+            if output_type == "execute_result" and "text/plain" in output.get("data", {}):
+                return output["data"]["text/plain"].strip().strip("'\"")
+
+            if output_type == "stream":
+                return output.get("text", "").strip()
+
+        return None
+
+    def _infra_prewarm(self, sandbox: modal.Sandbox, experiment_config: ExperimentConfig) -> None:
+        """
+        Pre-warm infrastructure: download model weights and clone repos.
+
+        This runs BEFORE the kernel starts, using sandbox.exec to prepare the filesystem:
+        - Downloads model weights to HF cache (disk only, no GPU memory)
+        - Clones GitHub repos to /workspace
+        - Shows progress logs in real-time
+
+        The kernel's recipe.warm_init() will then construct models from the local cache.
+
+        Args:
+            sandbox: Modal sandbox to run commands in
+            experiment_config: Experiment configuration with models and repos
+        """
+        print("🧊 Infra prewarm: preparing filesystem...")
+
+        # 1. Download model weights to HF cache
+        models_cfg = experiment_config.recipe.extra.get("models", [])
+        if models_cfg:
+            print(f"   📥 Pre-downloading {len(models_cfg)} model(s) to cache...")
+
+            for i, model_spec in enumerate(models_cfg):
+                # Skip custom load code (can't predict what it needs)
+                if model_spec.get("custom_load_code"):
+                    print(f"   ⏭️  Model {i}: custom load code (skipping prewarm)")
+                    continue
+
+                model_id = model_spec["name"]
+                is_peft = model_spec.get("is_peft", False)
+                obfuscate = experiment_config.recipe.extra.get("obfuscate", False)
+
+                # Download base model for PEFT adapters
+                if is_peft:
+                    base_model_id = model_spec.get("base_model")
+                    if not base_model_id:
+                        raise ValueError(f"Model {i}: PEFT adapter requires base_model")
+
+                    # Download base model
+                    if obfuscate:
+                        print(f"   📦 Downloading base model for adapter {i}...")
+                    else:
+                        print(f"   📦 Downloading {base_model_id}...")
+
+                    self._download_model_weights(sandbox, base_model_id)
+
+                    # PEFT adapters are lightweight, download in prewarm too
+                    if not obfuscate:
+                        print(f"   📦 Downloading PEFT adapter {model_id}...")
+                    self._download_model_weights(sandbox, model_id)
+
+                else:
+                    # Regular model
+                    if obfuscate:
+                        print(f"   📦 Downloading model {i}...")
+                    else:
+                        print(f"   📦 Downloading {model_id}...")
+
+                    self._download_model_weights(sandbox, model_id)
+
+            print(f"   ✅ Model weights cached")
+
+        # 2. Clone GitHub repos
+        github_repos = experiment_config.github_repos
+        if github_repos:
+            print(f"   📂 Cloning {len(github_repos)} GitHub repo(s)...")
+
+            for repo in github_repos:
+                # Handle both "org/repo" and full URLs
+                if not repo.startswith("http"):
+                    repo_url = f"https://github.com/{repo}"
+                else:
+                    repo_url = repo
+
+                repo_name = repo_url.split("/")[-1].replace(".git", "")
+                print(f"   🔗 Cloning {repo_name}...")
+
+                script = f"""
+import subprocess
+from pathlib import Path
+
+workspace = Path("/workspace")
+workspace.mkdir(exist_ok=True)
+repo_path = workspace / "{repo_name}"
+
+if not repo_path.exists():
+    subprocess.run(
+        ["git", "clone", "{repo_url}", str(repo_path)],
+        check=True,
+        capture_output=False
+    )
+    print("✅ Cloned")
+else:
+    print("✅ Already exists")
+"""
+
+                p = sandbox.exec("python", "-c", script)
+                for line in p.stdout:
+                    line = line.rstrip()
+                    if line:
+                        print(f"      {line}")
+
+            print(f"   ✅ Repos cloned to /workspace")
+
+        print("✅ Infra prewarm complete\n")
+
+    def _download_model_weights(self, sandbox: modal.Sandbox, model_id: str) -> None:
+        """
+        Download model weights to HF cache using snapshot_download.
+
+        This only downloads to disk, no GPU memory is used.
+        The kernel will construct model objects from this cache.
+
+        Args:
+            sandbox: Modal sandbox to run download in
+            model_id: HuggingFace model identifier
+        """
+        script = f"""
+import os
+from huggingface_hub import snapshot_download
+
+cache_dir = os.environ.get("HF_HOME", "/root/.cache/huggingface")
+token = os.environ.get("HF_TOKEN")
+
+print(f"Downloading to {{cache_dir}}")
+snapshot_download(
+    "{model_id}",
+    cache_dir=cache_dir,
+    token=token,
+    resume_download=True,
+)
+print("✅ Download complete")
+"""
+
+        p = sandbox.exec("python", "-c", script)
+        for line in p.stdout:
+            line = line.rstrip()
+            if line and not line.startswith("Fetching"):  # Filter verbose HF logs
+                print(f"      {line}")
+
+    def _warmup_session(self, tunnel_url: str, sandbox: modal.Sandbox, experiment_name: str = "_warmup") -> str:
+        """
+        Pre-warm a Jupyter kernel session by creating it and waiting for recipe init to complete.
+
+        This starts a real session that the agent will reuse, ensuring models are constructed
+        from the pre-downloaded cache before the agent ever touches the notebook.
+
+        Args:
+            tunnel_url: The Jupyter tunnel URL
+            sandbox: The Modal sandbox (unused, for future extensibility)
+            experiment_name: Name for the warmup notebook
+
+        Returns:
+            session_id of the pre-warmed session
+
+        Raises:
+            RuntimeError: If initialization fails
+            TimeoutError: If warmup takes too long
+        """
+        print(f"🔥 Pre-warming kernel (constructing models from cache)...")
+
+        # 1) Start a real session
+        try:
+            response = requests.post(
+                f"{tunnel_url}/api/scribe/start",
+                json={"experiment_name": experiment_name},
+                timeout=30,
+            )
+            response.raise_for_status()
+            session_id = response.json()["session_id"]
+            print(f"   Started warmup session: {session_id}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to start warmup session: {e}")
+
+        # 2) Poll until kernel finishes initialization
+        max_wait = 600  # 10 minutes
+        delay = 10
+
+        print(f"   Waiting for kernel to construct models from cache...")
+
+        for i in range(max_wait // delay):
+            time.sleep(delay)
+
+            try:
+                resp = requests.post(
+                    f"{tunnel_url}/api/scribe/exec",
+                    json={
+                        "session_id": session_id,
+                        "code": "_init_success if '_init_success' in globals() else None",
+                        "hidden": True,
+                    },
+                    timeout=10,
+                )
+
+                if resp.status_code != 200:
+                    continue
+
+                value = self._extract_text_result(resp.json())
+
+                if value == "True":
+                    print(f"✅ Models constructed and ready! ({(i+1)*delay}s)")
+                    return session_id
+
+                if value == "False":
+                    err_resp = requests.post(
+                        f"{tunnel_url}/api/scribe/exec",
+                        json={"session_id": session_id, "code": "_init_error", "hidden": True},
+                        timeout=10,
+                    )
+                    error_msg = self._extract_text_result(err_resp.json()) if err_resp.status_code == 200 else "Unknown"
+                    raise RuntimeError(f"Init failed: {error_msg}")
+
+                # Still initializing
+                print(f"   Still constructing models... ({(i+1)*delay}s)")
+
+            except requests.exceptions.RequestException:
+                # Kernel busy, keep waiting
+                if (i + 1) % 3 == 0:
+                    print(f"   Still constructing... ({(i+1)*delay}s)")
+
+        raise TimeoutError(f"Timed out after {max_wait}s")
 
     def build_image(
         self,
@@ -130,7 +370,7 @@ try:
     _kernel_init_log.append(f"Getting recipe: {{config.recipe.name}}")
     recipe = get_recipe(config.recipe.name)
 
-    _kernel_init_log.append("Running warm_init (loading models)...")
+    _kernel_init_log.append("Running warm_init (constructing models from cache)...")
     ns.update(recipe.warm_init(config.recipe))
 
     globals().update(ns)
@@ -183,6 +423,10 @@ app.start()
         )
 
         print(f"✅ Sandbox created: {sandbox.object_id}")
+
+        # Pre-download model weights to HF cache (before kernel starts)
+        self._infra_prewarm(sandbox, experiment_config)
+
         print("   Starting Jupyter...")
 
         # Get the public tunnel URL (no auth needed with encrypted_ports)
@@ -208,8 +452,12 @@ app.start()
                     break
                 time.sleep(retry_delay)
 
-        # Store sandbox for cleanup
-        self._active_sandboxes[sandbox.object_id] = (sandbox, tunnel)
+        # Pre-warm kernel: start a session and wait for recipe initialization
+        # This happens BEFORE the agent starts, so the agent gets a warm kernel
+        session_id = self._warmup_session(tunnel.url, sandbox, experiment_name=name)
+
+        # Store sandbox with session_id for cleanup
+        self._active_sandboxes[sandbox.object_id] = (sandbox, tunnel, session_id)
 
         return ModalDeploymentInfo(
             sandbox_id=sandbox.object_id,
@@ -218,6 +466,7 @@ app.start()
             jupyter_token="",  # No token needed with encrypted_ports
             status="running",
             sandbox=sandbox,
+            session_id=session_id,  # Pre-warmed session ready for agent
         )
 
     def _get_modal_gpu(self, gpu_config: GPUConfig) -> str:
@@ -264,7 +513,9 @@ app.start()
             sandbox_id: Sandbox ID to terminate
         """
         if sandbox_id in self._active_sandboxes:
-            sandbox, tunnel = self._active_sandboxes[sandbox_id]
+            sandbox_info = self._active_sandboxes[sandbox_id]
+            # Handle both old (sandbox, tunnel) and new (sandbox, tunnel, session_id) formats
+            sandbox = sandbox_info[0]
             # Explicitly terminate the sandbox
             try:
                 sandbox.terminate()

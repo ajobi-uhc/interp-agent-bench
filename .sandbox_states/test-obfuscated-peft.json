@@ -1,10 +1,10 @@
 {
-  "sandbox_id": "sb-v7yjlSwSr0Sw8Oj4RfHNN4",
-  "jupyter_url": "https://ta-01ka20zvrxh88964qmed26afhn-8888.wo-hqjbfc4jw7f8lx3akqoh3gjpz.w.modal.host",
+  "sandbox_id": "sb-tsu2wGU12XmIwOR5Uvj1ec",
+  "jupyter_url": "https://ta-01ka3hby2qpbycxeeddx9ys1a4-8888.wo-c5h35eq4wdmkdsg7dvisn93td.w.modal.host",
   "jupyter_port": 8888,
   "jupyter_token": "",
   "experiment_name": "test-obfuscated-peft",
   "config_path": "/Users/aryajakkli/Code/mi-exp/interp-agent-bench/configs/test_hidden_behavior.yaml",
-  "workspace_path": "/Users/aryajakkli/Code/mi-exp/interp-agent-bench/notebooks/test-obfuscated-peft_20251114_213025",
-  "timestamp": "20251114_213025"
+  "workspace_path": "/Users/aryajakkli/Code/mi-exp/interp-agent-bench/notebooks/test-obfuscated-peft_20251115_113552",
+  "timestamp": "20251115_113552"
 }

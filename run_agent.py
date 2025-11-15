@@ -74,6 +74,7 @@ async def run_gpu_agent(config_path: Path, verbose: bool = False):
         task=config.task,
         needs_gpu=True,
         agent_provider="claude",
+        session_id=deployment.session_id,  # Pass pre-warmed session ID
     )
 
     # Callback to display MCP server logs
@@ -87,6 +88,7 @@ async def run_gpu_agent(config_path: Path, verbose: bool = False):
         workspace_path=agent_workspace,
         mcp_config=mcp_servers,
         allowed_tools=[
+            "mcp__notebooks__attach_to_session",  # NEW: Attach to pre-warmed session
             "mcp__notebooks__start_new_session",
             "mcp__notebooks__execute_code",
             "mcp__notebooks__add_markdown",

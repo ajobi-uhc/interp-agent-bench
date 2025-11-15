@@ -211,46 +211,6 @@ async def _start_session_internal(
         global _active_sessions
         _active_sessions.add(data["session_id"])
 
-        # Wait for kernel to be ready AND for exec_lines to complete
-        # Check if the expected variables from recipe are loaded
-        import time
-        import asyncio
-        max_wait = 120  # Wait up to 2 minutes for model loading
-        print(f"[DEBUG] Waiting for kernel initialization and model loading...", file=sys.stderr)
-        for i in range(max_wait):
-            try:
-                # Check if kernel is responsive AND variables are loaded
-                check_response = requests.post(
-                    f"{server_url}/api/scribe/exec",
-                    json={
-                        "session_id": data["session_id"],
-                        "code": "'model' in dir()",  # Check if model variable exists
-                        "hidden": True
-                    },
-                    headers=headers,
-                    timeout=5,
-                )
-                if check_response.status_code == 200:
-                    result_data = check_response.json()
-                    # Check if the execution returned True (model exists)
-                    if result_data and len(result_data) > 0:
-                        outputs = result_data[0].get("outputs", [])
-                        for output in outputs:
-                            if output.get("type") == "execute_result" and "True" in str(output.get("data", {})):
-                                print(f"[DEBUG] Kernel and model ready after {i+1}s", file=sys.stderr)
-                                break
-                        else:
-                            # Model not loaded yet, continue waiting
-                            if i % 5 == 0:  # Log every 5 seconds
-                                print(f"[DEBUG] Still waiting for model to load... ({i+1}s)", file=sys.stderr)
-                            await asyncio.sleep(1)
-                            continue
-                        break
-            except Exception as e:
-                if i % 5 == 0:
-                    print(f"[DEBUG] Waiting for kernel... ({i+1}s): {e}", file=sys.stderr)
-                await asyncio.sleep(1)
-
         # Save notebook locally
         _save_notebook_locally(data["session_id"], data["notebook_path"])
 
@@ -321,9 +281,60 @@ async def _start_session_internal(
 
 
 @mcp.tool
+async def attach_to_session(session_id: str) -> Dict[str, Any]:
+    """
+    Attach to an existing pre-warmed session (typically created by the infrastructure layer).
+
+    Use this when the infrastructure has already created a session with models loaded.
+    This avoids waiting for model loading and provides instant access to a ready kernel.
+
+    Args:
+        session_id: The session ID of the pre-warmed session
+
+    Returns:
+        Dictionary with:
+        - session_id: The session identifier
+        - status: "attached"
+        - note: Confirmation message
+    """
+    try:
+        server_url = ensure_server_running()
+
+        # Verify the session exists and is responsive
+        headers = get_headers()
+        check_response = requests.post(
+            f"{server_url}/api/scribe/exec",
+            json={
+                "session_id": session_id,
+                "code": "'kernel_ready'",
+                "hidden": True,
+            },
+            headers=headers,
+            timeout=10,
+        )
+        check_response.raise_for_status()
+
+        # Track session for cleanup
+        global _active_sessions
+        _active_sessions.add(session_id)
+
+        return {
+            "session_id": session_id,
+            "status": "attached",
+            "note": f"Successfully attached to pre-warmed session {session_id}. Models are already loaded and ready to use.",
+        }
+
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Failed to attach to session {session_id}: {str(e)}")
+
+
+@mcp.tool
 async def start_new_session(experiment_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Start a completely new Jupyter kernel session with an empty notebook.
+
+    NOTE: This will start a fresh kernel and may take several minutes if models need to load.
+    If you have a pre-warmed session_id from the infrastructure, use attach_to_session instead.
 
     Args:
         experiment_name: Custom name for the notebook (e.g., "ImageGeneration")

@@ -1,15 +1,17 @@
-name: "test-obfuscated-peft"
+name: "introspection-qwen-30b"
 
 task: "../scaffold/advice/introspect_v2.md"
 
-models:
-  - name: "Qwen/Qwen3-30B-A3B-Instruct-2507"
-    is_peft: false
-    base_model: "Qwen/Qwen3-30B-A3B-Instruct-2507"
-    device: "auto"  # Changed to "auto" to distribute across 2 GPUs
-    dtype: "bfloat16"
-    trust_remote_code: true
-    obfuscate_name: false  # Hide the model name from the agent
+recipe:
+  name: "model"
+  extra:
+    obfuscate: false  # Show model name since this is introspection task
+    models:
+      - name: "Qwen/Qwen3-30B-A3B-Instruct-2507"
+        device: "auto"  # Distribute across 2 GPUs
+        dtype: "bfloat16"
+        trust_remote_code: true
+        is_peft: false
 
 gpu:
   gpu_type: "A100-80GB"
@@ -25,3 +27,4 @@ image:
     - "pandas"
     - "matplotlib"
     - "numpy"
+    - "seaborn"
