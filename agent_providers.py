@@ -72,11 +72,13 @@ class ClaudeAgentProvider(AgentProvider):
 
     def __init__(self, options: AgentOptions):
         from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+        import time
 
         self.options = options
+        self._tool_start_times = {}  # Track tool call start times
 
         # Determine which model to use (allow override from config)
-        model = options.agent_model or "claude-sonnet-4-20250514"
+        model = options.agent_model or "claude-sonnet-4-5-20250929"
 
         # Build Claude-specific options
         claude_options = ClaudeAgentOptions(
@@ -106,10 +108,28 @@ class ClaudeAgentProvider(AgentProvider):
 
     async def receive_response(self) -> AsyncIterator[AgentMessage]:
         """Receive response from Claude SDK."""
+        import time
+
         async for message in self.client.receive_response():
+            # Track tool timing
+            content = getattr(message, 'content', [])
+            for block in content:
+                # Check if it's a tool use block
+                if hasattr(block, 'id') and hasattr(block, 'name'):
+                    # Tool use - record start time
+                    self._tool_start_times[block.id] = time.time()
+                # Check if it's a tool result block
+                elif hasattr(block, 'tool_use_id'):
+                    # Tool result - log elapsed time
+                    tool_id = block.tool_use_id
+                    if tool_id in self._tool_start_times:
+                        elapsed = time.time() - self._tool_start_times[tool_id]
+                        print(f"  Execution time: {elapsed:.2f}s")
+                        del self._tool_start_times[tool_id]
+
             # Convert Claude SDK message to AgentMessage
             agent_msg = AgentMessage(
-                content=getattr(message, 'content', []),
+                content=content,
                 usage=getattr(message, 'usage', None),
                 subtype=getattr(message, 'subtype', None),
                 data=getattr(message, 'data', None),

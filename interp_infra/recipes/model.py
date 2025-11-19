@@ -9,11 +9,9 @@ Single recipe that handles all model loading scenarios:
 """
 
 import os
-from typing import Dict, Any
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from typing import Dict, Any, List
 
-from interp_infra.recipes.base import RecipeConfig, register_recipe
+from interp_infra.recipes.base import RecipeConfig, PrewarmTask, register_recipe
 
 
 class TargetModel:
@@ -65,6 +63,54 @@ class ModelRecipe:
     }
     """
 
+    def get_prewarm_plan(self, cfg: RecipeConfig) -> List[PrewarmTask]:
+        """
+        Declare what models to pre-download before kernel starts.
+
+        Returns PrewarmTask objects for:
+        - Regular models → download the model
+        - PEFT adapters → download base model + adapter
+        - Custom load code → skip (can't predict what it needs)
+        """
+        tasks = []
+        models_cfg = cfg.extra.get("models", [])
+
+        for i, model_spec in enumerate(models_cfg):
+            # Skip custom load code (can't predict dependencies)
+            if model_spec.get("custom_load_code"):
+                continue
+
+            model_id = model_spec["name"]
+            is_peft = model_spec.get("is_peft", False)
+
+            if is_peft:
+                # Download base model for PEFT adapters
+                base_model_id = model_spec.get("base_model")
+                if not base_model_id:
+                    raise ValueError(f"Model {i}: PEFT adapter requires base_model")
+
+                tasks.append(PrewarmTask(
+                    kind="model",
+                    id=base_model_id,
+                    extra={"purpose": "peft_base", "adapter_id": model_id}
+                ))
+
+                # Download PEFT adapter
+                tasks.append(PrewarmTask(
+                    kind="model",
+                    id=model_id,
+                    extra={"purpose": "peft_adapter", "base_model": base_model_id}
+                ))
+            else:
+                # Regular model
+                tasks.append(PrewarmTask(
+                    kind="model",
+                    id=model_id,
+                    extra={"purpose": "standard_model"}
+                ))
+
+        return tasks
+
     def warm_init(self, cfg: RecipeConfig) -> Dict[str, Any]:
         """
         Construct models from pre-downloaded cache with optional obfuscation.
@@ -73,6 +119,10 @@ class ModelRecipe:
         This method only constructs model objects (deserializes from cache → GPU memory).
         No network downloads happen here.
         """
+        # Import transformers here (only runs in kernel, not parent)
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
         # HF auth
         hf_token = os.environ.get("HF_TOKEN")
         if hf_token:
@@ -107,11 +157,18 @@ class ModelRecipe:
 
     def _load_standard_model(self, spec: Dict[str, Any], obfuscate: bool):
         """
-        Construct a model from cache using standard transformers loading.
+        Construct a model from cache or volume.
 
-        Weights are already in HF cache from _infra_prewarm, so from_pretrained
-        just deserializes them to GPU memory (no download).
+        If MODEL_PATHS_B64 env var exists, loads from volume path.
+        Otherwise, loads from HF cache (weights already downloaded by _infra_prewarm).
         """
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        import os
+        import pickle
+        import base64
+        from pathlib import Path
+
         model_id = spec["name"]
         device = spec.get("device", "auto")
         dtype_str = spec.get("dtype", "auto")
@@ -122,6 +179,20 @@ class ModelRecipe:
             print("Loading target model...")
         else:
             print(f"Loading {model_id}...")
+
+        # Check if model is in a volume
+        model_paths = {}
+        if "MODEL_PATHS_B64" in os.environ:
+            model_paths = pickle.loads(base64.b64decode(os.environ["MODEL_PATHS_B64"]))
+
+        # Determine model path (volume or HF cache)
+        if model_id in model_paths:
+            model_path = model_paths[model_id]
+            print(f"   Loading from volume: {model_path}")
+        else:
+            model_path = model_id  # HF will use cache
+            cache_dir = os.environ.get("HF_HOME", "/root/.cache/huggingface")
+            print(f"   Loading from HF cache: {cache_dir}")
 
         # Parse dtype
         dtype_map = {
@@ -136,32 +207,35 @@ class ModelRecipe:
             from peft import PeftModel
 
             base_model_id = spec["base_model"]
+            # Check if base model is in volume
+            base_model_path = model_paths.get(base_model_id, base_model_id)
+
             base_model = AutoModelForCausalLM.from_pretrained(
-                base_model_id,
+                base_model_path,
                 device_map=device,
                 torch_dtype=dtype,
                 trust_remote_code=trust_remote_code,
             )
-            model = PeftModel.from_pretrained(base_model, model_id)
+            model = PeftModel.from_pretrained(base_model, model_path)
             tokenizer = AutoTokenizer.from_pretrained(
-                base_model_id,
+                base_model_path,
                 trust_remote_code=True
             )
         else:
             model = AutoModelForCausalLM.from_pretrained(
-                model_id,
+                model_path,
                 device_map=device,
                 torch_dtype=dtype,
                 trust_remote_code=trust_remote_code,
             )
             tokenizer = AutoTokenizer.from_pretrained(
-                model_id,
+                model_path,
                 trust_remote_code=True
             )
 
         if obfuscate:
-            print("✅ Model loaded")
+            print("Model loaded")
         else:
-            print(f"✅ Loaded {model_id} on {model.device}")
+            print(f"Loaded {model_id} on {model.device}")
 
         return model, tokenizer

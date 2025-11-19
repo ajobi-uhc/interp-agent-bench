@@ -15,6 +15,7 @@ from interp_infra.recipes.base import (
 
 # Auto-import all recipes to register them
 from interp_infra.recipes import model
+from interp_infra.recipes import api_access
 
 __all__ = [
     "RecipeConfig",

@@ -1,0 +1,32 @@
+name: "introspection-gemma-27b"
+
+task: "../scaffold/advice/introspect_min.md"
+investigative_tips_path: "../scaffold/investigative_tips.md"
+
+recipe:
+  name: "model"
+  extra:
+    obfuscate: false  # Show model name since this is introspection task
+    models:
+      - name: "Qwen/Qwen3-30B-A3B-Instruct-2507"
+        device: "auto"  # Distribute across 2 GPUs
+        dtype: "bfloat16"
+        trust_remote_code: true
+        is_peft: false
+
+gpu:
+  gpu_type: "A100-80GB"
+  gpu_count: 2
+  use_model_volumes: true
+
+image:
+  python_packages:
+    - "torch"
+    - "transformers"
+    - "accelerate"
+    - "jupyter"
+    - "jupyter_client"
+    - "pandas"
+    - "matplotlib"
+    - "numpy"
+    - "seaborn"

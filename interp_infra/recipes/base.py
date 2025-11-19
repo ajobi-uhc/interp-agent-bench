@@ -2,8 +2,25 @@
 Base recipe system: protocol definition and registry.
 """
 
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Protocol
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional, Protocol
+
+
+@dataclass
+class PrewarmTask:
+    """A task for infrastructure to execute before kernel starts.
+
+    Infrastructure layer implements handlers for each task kind.
+    No fallbacks - all task kinds must be explicitly supported.
+
+    Attributes:
+        kind: Type of task - "model" (HF snapshot_download) or "repo" (git clone)
+        id: Model ID (e.g. "meta-llama/Llama-2-70b") or repo (e.g. "org/repo")
+        extra: Task-specific metadata (e.g., for logging in obfuscated mode)
+    """
+    kind: Literal["model", "repo"]
+    id: str
+    extra: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -27,24 +44,49 @@ class RecipeConfig:
 class EnvRecipe(Protocol):
     """Protocol for environment recipes.
 
-    Recipes are responsible for building the experiment-specific namespace
-    that gets injected into the Jupyter kernel before the agent's first cell.
+    Recipes are responsible for:
+    1. Defining what infrastructure to prepare (get_prewarm_plan)
+    2. Building the experiment-specific namespace inside kernel (warm_init)
 
     Recipes should:
-    - Load models, datasets, hooks, tools
-    - Create safe wrappers/facades
+    - Declare what models/repos to pre-download (in get_prewarm_plan)
+    - Load models from cache, create wrappers, expose tools (in warm_init)
     - Return only what the agent should see
 
     Recipes should NOT:
-    - Know about Modal, Jupyter, or deployment infrastructure
-    - Handle git repos, file paths, or workspace setup (that's initialize_session)
-    - Assume any specific file layout
+    - Execute sandbox.exec() or call Modal APIs
+    - Download models or clone repos themselves
+    - Know about Jupyter, Modal, or deployment infrastructure
     """
 
-    def warm_init(self, cfg: RecipeConfig) -> Dict[str, Any]:
-        """Initialize the environment inside the kernel.
+    def get_prewarm_plan(self, cfg: RecipeConfig) -> List[PrewarmTask]:
+        """Define infrastructure tasks to execute before kernel starts.
 
-        This runs before the agent's first notebook cell executes.
+        This runs in the parent process (ModalClient). The recipe declares
+        what models to download and what repos to clone. Infrastructure
+        executes these tasks via sandbox.exec().
+
+        Args:
+            cfg: Recipe configuration
+
+        Returns:
+            List of PrewarmTask objects describing what to prepare.
+
+        Example:
+            >>> recipe = ModelRecipe()
+            >>> plan = recipe.get_prewarm_plan(cfg)
+            >>> # plan = [
+            >>> #   PrewarmTask(kind="model", id="meta-llama/Llama-2-70b"),
+            >>> #   PrewarmTask(kind="repo", id="org/repo"),
+            >>> # ]
+        """
+        ...
+
+    def warm_init(self, cfg: RecipeConfig) -> Dict[str, Any]:
+        """Construct the environment inside the kernel from pre-downloaded cache.
+
+        This runs inside the Jupyter kernel at startup, after infrastructure
+        has pre-downloaded all models and cloned all repos.
 
         Args:
             cfg: Recipe configuration
@@ -54,9 +96,9 @@ class EnvRecipe(Protocol):
             These will be injected into the kernel's global namespace.
 
         Example:
-            >>> recipe = HiddenBehaviorRecipe()
-            >>> ns = recipe.warm_init(RecipeConfig(name="hidden_behavior", model_id="gpt2"))
-            >>> # ns = {"model": <TargetModel>, "task": "..."}
+            >>> recipe = ModelRecipe()
+            >>> ns = recipe.warm_init(cfg)
+            >>> # ns = {"model": <TargetModel>, "tokenizer": <tok>}
         """
         ...
 

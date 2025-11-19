@@ -1,0 +1,10 @@
+{
+  "sandbox_id": "sb-kodqoVlYMHGvATA2T3Bufk",
+  "jupyter_url": "https://ta-01kadvh1pv4qrz18gjjv33r9p8-8888.wo-gywqa7v5mtkkzhkqhlgc759f4.w.modal.host",
+  "jupyter_port": 8888,
+  "jupyter_token": "",
+  "experiment_name": "shutdown-resistance-investigation",
+  "config_path": "/Users/aryajakkli/Code/mi-exp/interp-agent-bench/configs/shutdown_resistance_modal.yaml",
+  "workspace_path": "/Users/aryajakkli/Code/mi-exp/interp-agent-bench/notebooks/shutdown-resistance-investigation_20251119_114551",
+  "timestamp": "20251119_114551"
+}

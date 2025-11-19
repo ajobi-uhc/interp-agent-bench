@@ -75,6 +75,7 @@ async def run_gpu_agent(config_path: Path, verbose: bool = False):
         needs_gpu=True,
         agent_provider="claude",
         session_id=deployment.session_id,  # Pass pre-warmed session ID
+        investigative_tips_path=config.investigative_tips_path,  # Pass research tips
     )
 
     # Callback to display MCP server logs
@@ -119,8 +120,17 @@ async def run_gpu_agent(config_path: Path, verbose: bool = False):
 
             total_tokens = 0
             message_count = 0
+            last_activity = time.time()
+
+            print("\n⏳ Waiting for response...", flush=True)
 
             async for message in client.receive_response():
+                # Update last activity timestamp
+                current_time = time.time()
+                if current_time - last_activity > 30:  # Show heartbeat every 30s
+                    elapsed_mins = (current_time - start_time) / 60
+                    print(f"\n⏱️  Still running... ({elapsed_mins:.1f} min elapsed)", flush=True)
+                last_activity = current_time
                 # Track tokens
                 if hasattr(message, 'usage') and message.usage:
                     input_tokens = getattr(message.usage, 'input_tokens', 0)
@@ -142,12 +152,18 @@ async def run_gpu_agent(config_path: Path, verbose: bool = False):
                                 print(f"   Tool ID: {block.id}")
                         elif hasattr(block, 'text'):
                             print(block.text, end="", flush=True)
+                        elif hasattr(block, 'type') and block.type == 'extended_thinking':
+                            # Extended thinking block - show full content
+                            thinking_text = getattr(block, 'thinking', '') or getattr(block, 'text', '')
+                            if thinking_text:
+                                print(f"\n💭 [Thinking...]\n{thinking_text}\n", flush=True)
                         elif hasattr(block, 'tool_use_id'):
-                            # Tool result - show if there's an error
+                            # Tool result - show FULL content (no truncation)
                             if hasattr(block, 'is_error') and block.is_error:
                                 print(f"\n❌ Tool Error: {block.content}")
                             elif hasattr(block, 'content'):
-                                print(f"\n✅ Tool Result: {block.content[:200]}..." if len(str(block.content)) > 200 else f"\n✅ Tool Result: {block.content}")
+                                # Show full content without truncation
+                                print(f"\n✅ Tool Result: {block.content}")
 
             elapsed = time.time() - start_time
             print(f"\n\n⏱️  Total time: {elapsed:.2f}s ({elapsed/60:.2f} min)")

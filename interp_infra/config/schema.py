@@ -41,6 +41,12 @@ class GPUConfig(BaseModel):
     docker_image: Optional[str] = Field(default=None, description="Pre-built Docker image name")
     build_image: bool = Field(default=True, description="Build image from config vs use existing")
 
+    # Modal Volume support for model persistence
+    use_model_volumes: bool = Field(
+        default=False,
+        description="Use Modal Volumes for persistent model storage (one volume per model)"
+    )
+
 
 class ImageConfig(BaseModel):
     """Docker image build configuration."""
@@ -123,4 +129,10 @@ class ExperimentConfig(BaseModel):
     github_repos: List[str] = Field(
         default_factory=list,
         description="GitHub repos to clone into workspace"
+    )
+
+    # Agent prompts
+    investigative_tips_path: Optional[str] = Field(
+        default=None,
+        description="Path to investigative tips file (relative to scaffold/ dir)"
     )

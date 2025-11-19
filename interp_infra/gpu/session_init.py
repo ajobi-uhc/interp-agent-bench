@@ -1,68 +1,41 @@
-"""Session initialization - infrastructure setup only.
+"""Session initialization - lightweight kernel-side infra globals.
 
-This module handles infra concerns (git repos, workspace setup, auth).
-Model loading and experiment-specific setup is handled by recipes.
+This module provides cheap, safe globals to the kernel (paths, metadata).
+Heavy operations (git clone, model downloads) happen in ModalClient._infra_prewarm().
+Model loading and environment setup is handled by recipes.warm_init().
 """
 
-import subprocess
 from pathlib import Path
 from typing import Dict, Any
 from ..config.schema import ExperimentConfig
 
 
-def clone_github_repos(repos: list[str]) -> None:
-    """Clone GitHub repositories to /workspace.
-
-    Args:
-        repos: List of repo URLs (e.g., ["org/repo", "https://github.com/org/repo"])
-    """
-    if not repos:
-        return
-
-    workspace = Path("/workspace")
-    workspace.mkdir(exist_ok=True)
-
-    for repo in repos:
-        # Handle both "org/repo" and full URLs
-        if not repo.startswith("http"):
-            repo = f"https://github.com/{repo}"
-
-        repo_name = repo.split("/")[-1].replace(".git", "")
-        repo_path = workspace / repo_name
-
-        if not repo_path.exists():
-            print(f"Cloning {repo}...")
-            subprocess.run(
-                ["git", "clone", repo, str(repo_path)],
-                check=True,
-                capture_output=True
-            )
-            print(f"✅ Cloned {repo_name}")
-
-
 def initialize_session(config: ExperimentConfig) -> Dict[str, Any]:
-    """Run infrastructure initialization.
+    """Initialize lightweight infrastructure globals inside the kernel.
 
-    This handles only infra concerns:
-    - Clone git repos
-    - Set up workspace paths
-    - HF authentication (via Modal secrets)
+    This runs at kernel startup and should be FAST:
+    - No git clone (already done in _infra_prewarm)
+    - No model downloads (already done in _infra_prewarm)
+    - No heavy filesystem operations
+    - Just provide paths and metadata
 
-    Model loading and experiment-specific setup is handled by recipes.
+    Heavy infra preparation happens in ModalClient._infra_prewarm() before kernel starts.
+    Model construction happens in recipe.warm_init() from pre-downloaded cache.
 
     Args:
         config: Experiment configuration
 
     Returns:
-        Dictionary of infrastructure variables (workspace path, etc.)
+        Dictionary of lightweight infrastructure globals (paths, metadata)
     """
     namespace = {}
 
-    # Clone repos
-    clone_github_repos(config.github_repos)
+    # Provide workspace path if repos were cloned by _infra_prewarm
+    workspace = Path("/workspace")
+    if workspace.exists():
+        namespace["workspace"] = str(workspace)
 
-    # Add workspace path to namespace
-    if config.github_repos:
-        namespace["workspace"] = "/workspace"
+    # Add experiment metadata
+    namespace["experiment_name"] = config.name
 
     return namespace

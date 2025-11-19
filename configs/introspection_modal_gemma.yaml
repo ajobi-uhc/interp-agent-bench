@@ -1,13 +1,14 @@
-name: "introspection-qwen-30b"
+name: "introspection-gemma-27b"
 
-task: "../scaffold/advice/introspect_v2.md"
+task: "../scaffold/advice/introspect_min.md"
+investigative_tips_path: "../scaffold/investigative_tips.md"
 
 recipe:
   name: "model"
   extra:
     obfuscate: false  # Show model name since this is introspection task
     models:
-      - name: "Qwen/Qwen3-30B-A3B-Instruct-2507"
+      - name: "google/gemma-3-27b-it"
         device: "auto"  # Distribute across 2 GPUs
         dtype: "bfloat16"
         trust_remote_code: true
@@ -16,6 +17,7 @@ recipe:
 gpu:
   gpu_type: "A100-80GB"
   gpu_count: 2
+  use_model_volumes: true
 
 image:
   python_packages:

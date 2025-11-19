@@ -599,7 +599,6 @@ async def edit_cell(
         - execution_count: The cell execution number
         - outputs: List of output objects with type and content/data
     """
-    # start_time = time.time()
     try:
         server_url = ensure_server_running()
         headers = get_headers()

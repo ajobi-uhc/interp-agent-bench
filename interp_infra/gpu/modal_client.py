@@ -47,84 +47,143 @@ class ModalClient:
 
         return None
 
-    def _infra_prewarm(self, sandbox: modal.Sandbox, experiment_config: ExperimentConfig) -> None:
+    def _infra_prewarm(
+        self,
+        sandbox: modal.Sandbox,
+        experiment_config: ExperimentConfig,
+        model_paths: Dict[str, str] = None
+    ) -> None:
         """
-        Pre-warm infrastructure: download model weights and clone repos.
+        Pre-warm infrastructure by executing recipe-defined tasks.
 
-        This runs BEFORE the kernel starts, using sandbox.exec to prepare the filesystem:
-        - Downloads model weights to HF cache (disk only, no GPU memory)
-        - Clones GitHub repos to /workspace
-        - Shows progress logs in real-time
+        Clean separation:
+        - Recipe decides WHAT to prepare (via get_prewarm_plan)
+        - ModalClient decides HOW to prepare (handlers below)
 
-        The kernel's recipe.warm_init() will then construct models from the local cache.
+        No fallbacks. All task kinds must have explicit handlers.
 
         Args:
             sandbox: Modal sandbox to run commands in
-            experiment_config: Experiment configuration with models and repos
+            experiment_config: Experiment configuration
+            model_paths: Optional mapping of model_id -> volume mount path
         """
-        print("🧊 Infra prewarm: preparing filesystem...")
+        from ..recipes.base import get_recipe
 
-        # 1. Download model weights to HF cache
-        models_cfg = experiment_config.recipe.extra.get("models", [])
-        if models_cfg:
-            print(f"   📥 Pre-downloading {len(models_cfg)} model(s) to cache...")
+        print("Preparing environment...")
 
-            for i, model_spec in enumerate(models_cfg):
-                # Skip custom load code (can't predict what it needs)
-                if model_spec.get("custom_load_code"):
-                    print(f"   ⏭️  Model {i}: custom load code (skipping prewarm)")
-                    continue
+        if model_paths is None:
+            model_paths = {}
 
-                model_id = model_spec["name"]
-                is_peft = model_spec.get("is_peft", False)
-                obfuscate = experiment_config.recipe.extra.get("obfuscate", False)
+        # 1. Get prewarm plan from recipe
+        recipe = get_recipe(experiment_config.recipe.name)
+        prewarm_plan = recipe.get_prewarm_plan(experiment_config.recipe)
 
-                # Download base model for PEFT adapters
-                if is_peft:
-                    base_model_id = model_spec.get("base_model")
-                    if not base_model_id:
-                        raise ValueError(f"Model {i}: PEFT adapter requires base_model")
+        # 2. Execute prewarm tasks via handlers
+        obfuscate = experiment_config.recipe.extra.get("obfuscate", False)
 
-                    # Download base model
+        if prewarm_plan:
+            print(f"  Executing {len(prewarm_plan)} prewarm task(s)...")
+
+            for task in prewarm_plan:
+                if task.kind == "model":
                     if obfuscate:
-                        print(f"   📦 Downloading base model for adapter {i}...")
+                        purpose = task.extra.get("purpose", "model")
+                        print(f"    Downloading {purpose}...")
                     else:
-                        print(f"   📦 Downloading {base_model_id}...")
+                        print(f"    Downloading {task.id}...")
 
-                    self._download_model_weights(sandbox, base_model_id)
+                    volume_path = model_paths.get(task.id)
+                    self._download_model_weights(sandbox, task.id, volume_path)
 
-                    # PEFT adapters are lightweight, download in prewarm too
-                    if not obfuscate:
-                        print(f"   📦 Downloading PEFT adapter {model_id}...")
-                    self._download_model_weights(sandbox, model_id)
+                elif task.kind == "repo":
+                    print(f"    Cloning {task.id}...")
+                    self._clone_repo(sandbox, task.id)
 
-                else:
-                    # Regular model
-                    if obfuscate:
-                        print(f"   📦 Downloading model {i}...")
-                    else:
-                        print(f"   📦 Downloading {model_id}...")
+            print(f"  Prewarm complete")
 
-                    self._download_model_weights(sandbox, model_id)
-
-            print(f"   ✅ Model weights cached")
-
-        # 2. Clone GitHub repos
+        # 3. Clone infrastructure-level repos (from config.github_repos)
         github_repos = experiment_config.github_repos
         if github_repos:
-            print(f"   📂 Cloning {len(github_repos)} GitHub repo(s)...")
-
+            print(f"  Cloning {len(github_repos)} infrastructure repo(s)...")
             for repo in github_repos:
-                # Handle both "org/repo" and full URLs
-                if not repo.startswith("http"):
-                    repo_url = f"https://github.com/{repo}"
-                else:
-                    repo_url = repo
+                print(f"    {repo}")
+                self._clone_repo(sandbox, repo)
+            print(f"  Infrastructure repos cloned")
 
-                repo_name = repo_url.split("/")[-1].replace(".git", "")
-                print(f"   🔗 Cloning {repo_name}...")
+        print("Environment ready\n")
 
-                script = f"""
+    def _download_model_weights(
+        self,
+        sandbox: modal.Sandbox,
+        model_id: str,
+        volume_path: Optional[str] = None
+    ) -> None:
+        """
+        Load model weights from volume or download to HF cache.
+
+        If volume_path is provided, checks that model exists in volume (read-only).
+        Otherwise, downloads to HF cache (ephemeral).
+
+        Args:
+            sandbox: Modal sandbox to run download in
+            model_id: HuggingFace model identifier
+            volume_path: Optional volume mount path to check (read-only)
+        """
+        if volume_path:
+            # Volume mode: verify model exists (read-only, no downloads)
+            check_script = f"""
+from pathlib import Path
+model_path = Path("{volume_path}")
+if (model_path / "config.json").exists():
+    print("Model found in volume")
+else:
+    raise FileNotFoundError(
+        f"Model not found in volume at {volume_path}. "
+        f"Pre-populate volume using: python scripts/download_model_to_volume.py --model-id {model_id}"
+    )
+"""
+            p = sandbox.exec("python", "-c", check_script)
+            for line in p.stdout:
+                line = line.rstrip()
+                if line:
+                    print(f"      {line}")
+        else:
+            # No volume: download to ephemeral HF cache
+            script = f"""
+import os
+from huggingface_hub import snapshot_download
+
+token = os.environ.get("HF_TOKEN")
+print("Downloading to HF cache")
+snapshot_download(
+    "{model_id}",
+    token=token,
+    resume_download=True,
+)
+print("Download complete")
+"""
+            p = sandbox.exec("python", "-c", script)
+            for line in p.stdout:
+                line = line.rstrip()
+                if line and not line.startswith("Fetching"):  # Filter verbose HF logs
+                    print(f"      {line}")
+
+    def _clone_repo(self, sandbox: modal.Sandbox, repo: str) -> None:
+        """
+        Clone a GitHub repository to /workspace.
+
+        Args:
+            sandbox: Modal sandbox to run clone in
+            repo: Repo identifier ("org/repo") or full URL
+        """
+        if not repo.startswith("http"):
+            repo_url = f"https://github.com/{repo}"
+        else:
+            repo_url = repo
+
+        repo_name = repo_url.split("/")[-1].replace(".git", "")
+
+        script = f"""
 import subprocess
 from pathlib import Path
 
@@ -138,61 +197,42 @@ if not repo_path.exists():
         check=True,
         capture_output=False
     )
-    print("✅ Cloned")
+    print("Cloned")
 else:
-    print("✅ Already exists")
-"""
-
-                p = sandbox.exec("python", "-c", script)
-                for line in p.stdout:
-                    line = line.rstrip()
-                    if line:
-                        print(f"      {line}")
-
-            print(f"   ✅ Repos cloned to /workspace")
-
-        print("✅ Infra prewarm complete\n")
-
-    def _download_model_weights(self, sandbox: modal.Sandbox, model_id: str) -> None:
-        """
-        Download model weights to HF cache using snapshot_download.
-
-        This only downloads to disk, no GPU memory is used.
-        The kernel will construct model objects from this cache.
-
-        Args:
-            sandbox: Modal sandbox to run download in
-            model_id: HuggingFace model identifier
-        """
-        script = f"""
-import os
-from huggingface_hub import snapshot_download
-
-cache_dir = os.environ.get("HF_HOME", "/root/.cache/huggingface")
-token = os.environ.get("HF_TOKEN")
-
-print(f"Downloading to {{cache_dir}}")
-snapshot_download(
-    "{model_id}",
-    cache_dir=cache_dir,
-    token=token,
-    resume_download=True,
-)
-print("✅ Download complete")
+    print("Already exists")
 """
 
         p = sandbox.exec("python", "-c", script)
+
+        # Print stdout
         for line in p.stdout:
             line = line.rstrip()
-            if line and not line.startswith("Fetching"):  # Filter verbose HF logs
+            if line:
                 print(f"      {line}")
+
+        # Print stderr (git outputs progress here, not just errors)
+        stderr_lines = []
+        for line in p.stderr:
+            line = line.rstrip()
+            if line:
+                stderr_lines.append(line)
+
+        # Wait for process to complete
+        p.wait()
+
+        # Check if the command failed (check=True in subprocess.run will raise if git clone fails)
+        if p.returncode != 0:
+            # Print stderr on failure
+            for line in stderr_lines:
+                print(f"      ERROR: {line}")
+            raise RuntimeError(f"Failed to clone repo {repo}: exit code {p.returncode}")
 
     def _warmup_session(self, tunnel_url: str, sandbox: modal.Sandbox, experiment_name: str = "_warmup") -> str:
         """
-        Pre-warm a Jupyter kernel session by creating it and waiting for recipe init to complete.
+        Pre-warm a Jupyter kernel by explicitly executing initialization code.
 
-        This starts a real session that the agent will reuse, ensuring models are constructed
-        from the pre-downloaded cache before the agent ever touches the notebook.
+        This starts a session and explicitly runs recipe initialization via the Scribe API,
+        ensuring models are constructed from cache before the agent uses the kernel.
 
         Args:
             tunnel_url: The Jupyter tunnel URL
@@ -206,9 +246,9 @@ print("✅ Download complete")
             RuntimeError: If initialization fails
             TimeoutError: If warmup takes too long
         """
-        print(f"🔥 Pre-warming kernel (constructing models from cache)...")
+        print(f"Pre-warming kernel...")
 
-        # 1) Start a real session
+        # 1. Start a fresh kernel session
         try:
             response = requests.post(
                 f"{tunnel_url}/api/scribe/start",
@@ -221,53 +261,86 @@ print("✅ Download complete")
         except Exception as e:
             raise RuntimeError(f"Failed to start warmup session: {e}")
 
-        # 2) Poll until kernel finishes initialization
-        max_wait = 600  # 10 minutes
-        delay = 10
+        # 2. Explicitly execute initialization code in the kernel
+        init_code = """
+import os, sys, pickle, base64, traceback
+import time
 
-        print(f"   Waiting for kernel to construct models from cache...")
+# Ensure paths are set
+sys.path.insert(0, "/root")
 
-        for i in range(max_wait // delay):
-            time.sleep(delay)
+_start_time = time.time()
 
-            try:
-                resp = requests.post(
-                    f"{tunnel_url}/api/scribe/exec",
-                    json={
-                        "session_id": session_id,
-                        "code": "_init_success if '_init_success' in globals() else None",
-                        "hidden": True,
-                    },
-                    timeout=10,
-                )
+print("Loading experiment config...")
+config = pickle.loads(base64.b64decode(os.environ["EXPERIMENT_CONFIG_B64"]))
+print(f"  Experiment: {config.name}")
+print(f"  Recipe: {config.recipe.name}")
 
-                if resp.status_code != 200:
-                    continue
+print("Running initialize_session...")
+from interp_infra.gpu.session_init import initialize_session
+ns = initialize_session(config)
 
-                value = self._extract_text_result(resp.json())
+print("Loading recipe...")
+from interp_infra.recipes.base import get_recipe
+recipe = get_recipe(config.recipe.name)
 
-                if value == "True":
-                    print(f"✅ Models constructed and ready! ({(i+1)*delay}s)")
-                    return session_id
+print("Running recipe.warm_init...")
+_model_load_start = time.time()
+ns.update(recipe.warm_init(config.recipe))
+_model_load_time = time.time() - _model_load_start
+print(f"  Model loading took: {_model_load_time:.1f}s")
 
-                if value == "False":
-                    err_resp = requests.post(
-                        f"{tunnel_url}/api/scribe/exec",
-                        json={"session_id": session_id, "code": "_init_error", "hidden": True},
-                        timeout=10,
-                    )
-                    error_msg = self._extract_text_result(err_resp.json()) if err_resp.status_code == 200 else "Unknown"
-                    raise RuntimeError(f"Init failed: {error_msg}")
+print("Injecting into globals...")
+globals().update(ns)
 
-                # Still initializing
-                print(f"   Still constructing models... ({(i+1)*delay}s)")
+_total_time = time.time() - _start_time
+print(f"Initialization complete! Available: {list(ns.keys())}")
+print(f"Total initialization time: {_total_time:.1f}s")
+"""
 
-            except requests.exceptions.RequestException:
-                # Kernel busy, keep waiting
-                if (i + 1) % 3 == 0:
-                    print(f"   Still constructing... ({(i+1)*delay}s)")
+        print(f"   Executing initialization code in kernel...")
 
-        raise TimeoutError(f"Timed out after {max_wait}s")
+        try:
+            response = requests.post(
+                f"{tunnel_url}/api/scribe/exec",
+                json={
+                    "session_id": session_id,
+                    "code": init_code,
+                    "hidden": False,
+                },
+                timeout=600,  # 10 minute timeout for model loading
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            # Print all output from the kernel
+            for output in result.get("outputs", []):
+                output_type = output.get("output_type", output.get("type"))
+
+                if output_type == "stream":
+                    text = output.get("text", "")
+                    if text:
+                        for line in text.rstrip().split('\n'):
+                            print(f"   {line}")
+
+                elif output_type == "error":
+                    ename = output.get("ename", "Error")
+                    evalue = output.get("evalue", "")
+                    traceback_lines = output.get("traceback", [])
+                    print(f"   Error: {ename}: {evalue}")
+                    for line in traceback_lines:
+                        # Strip ANSI codes from traceback
+                        clean_line = line.replace('\x1b[0m', '').replace('\x1b[1m', '').replace('\x1b[31m', '')
+                        print(f"   {clean_line}")
+                    raise RuntimeError(f"Initialization failed: {ename}: {evalue}")
+
+            print(f"Models constructed and ready")
+            return session_id
+
+        except requests.exceptions.Timeout:
+            raise TimeoutError(f"Initialization timed out after 10 minutes")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Failed to execute initialization: {e}")
 
     def build_image(
         self,
@@ -316,16 +389,37 @@ print("✅ Download complete")
         gpu = self._get_modal_gpu(gpu_config) if gpu_config else None
 
         # Create the sandbox
-        print(f"🚀 Creating Modal Sandbox: {name}")
+        print(f"Creating Modal Sandbox: {name}")
         if gpu_config:
-            print(f"   GPU: {gpu_config.gpu_type} x{gpu_config.gpu_count}")
+            print(f"  GPU: {gpu_config.gpu_type} x{gpu_config.gpu_count}")
         else:
-            print(f"   Mode: CPU-only (no GPU)")
-        print(f"   Recipe: {experiment_config.recipe.name}")
-        print(f"   This may take a few minutes...")
+            print(f"  Mode: CPU-only")
+        print(f"  Recipe: {experiment_config.recipe.name}")
 
         # Create or lookup an App for the sandbox
         app = modal.App.lookup(name, create_if_missing=True)
+
+        # Setup volumes if requested
+        volumes_dict = {}
+        model_paths = {}  # model_id -> mount_path mapping
+
+        if gpu_config and gpu_config.use_model_volumes:
+            print("Setting up model volumes...")
+            from ..recipes.base import get_recipe
+            recipe = get_recipe(experiment_config.recipe.name)
+            prewarm_plan = recipe.get_prewarm_plan(experiment_config.recipe)
+
+            if prewarm_plan:
+                for task in prewarm_plan:
+                    if task.kind == "model":
+                        model_id = task.id
+                        volume_name = f"model--{model_id.replace('/', '--')}"
+                        mount_path = f"/models/{model_id.replace('/', '--')}"
+
+                        print(f"  Volume: {volume_name}")
+                        volume = modal.Volume.from_name(volume_name, create_if_missing=True)
+                        volumes_dict[mount_path] = volume
+                        model_paths[model_id] = mount_path
 
         # Serialize config for the container
         import pickle
@@ -333,67 +427,23 @@ print("✅ Download complete")
         config_bytes = pickle.dumps(experiment_config)
         config_b64 = base64.b64encode(config_bytes).decode('ascii')
 
-        # Parent process: Store config in env var, create IPython startup file, start Jupyter
+        # Serialize model paths
+        model_paths_b64 = base64.b64encode(pickle.dumps(model_paths)).decode('ascii')
+
+        # Parent process: Store config in env var, start Jupyter
         startup_script = f"""
 import os
 import sys
-from pathlib import Path
 
 # Add scribe and interp_infra to Python path
 sys.path.insert(0, '/root')
 
 # Store config in environment for kernel to access
 os.environ['EXPERIMENT_CONFIG_B64'] = '{config_b64}'
-
-# Create IPython startup directory and file
-ipython_dir = Path.home() / '.ipython' / 'profile_default' / 'startup'
-ipython_dir.mkdir(parents=True, exist_ok=True)
-
-# Write startup file that runs when kernel starts
-startup_code = '''import os, sys, pickle, base64, traceback
-sys.path.insert(0, "/root")
-
-_kernel_init_log = []
-_kernel_init_log.append("Kernel startup file executing")
-
-try:
-    _kernel_init_log.append("Loading config from env...")
-    config = pickle.loads(base64.b64decode(os.environ["EXPERIMENT_CONFIG_B64"]))
-    _kernel_init_log.append(f"Config loaded: {{config.name}}")
-
-    from interp_infra.gpu.session_init import initialize_session
-    from interp_infra.recipes.base import get_recipe
-
-    _kernel_init_log.append("Running initialize_session...")
-    ns = initialize_session(config)
-
-    _kernel_init_log.append(f"Getting recipe: {{config.recipe.name}}")
-    recipe = get_recipe(config.recipe.name)
-
-    _kernel_init_log.append("Running warm_init (constructing models from cache)...")
-    ns.update(recipe.warm_init(config.recipe))
-
-    globals().update(ns)
-    _kernel_init_log.append(f"SUCCESS! Loaded: {{list(ns.keys())}}")
-    _init_success = True
-    print("✅ Recipe initialization complete!")
-    print(f"Available objects: {{list(ns.keys())}}")
-except Exception as _e:
-    _kernel_init_log.append(f"ERROR: {{_e}}")
-    _kernel_init_log.append(traceback.format_exc())
-    _init_success = False
-    _init_error = str(_e)
-    print("❌ Recipe initialization FAILED!")
-    print(f"Error: {{_e}}")
-    print("Run: print('\\\\n'.join(_kernel_init_log)) to see full log")
-'''
-
-startup_file = ipython_dir / '00-recipe-init.py'
-startup_file.write_text(startup_code)
-print(f"✅ Created IPython startup file: {{startup_file}}")
+os.environ['MODEL_PATHS_B64'] = '{model_paths_b64}'
 
 # Start Scribe server
-print("🚀 Starting Scribe notebook server...")
+print("Starting Scribe notebook server...")
 from scribe.notebook.notebook_server import ScribeServerApp
 
 app = ScribeServerApp()
@@ -405,29 +455,74 @@ app.initialize([
     '--ServerApp.allow_root=True',
 ])
 
-print(f"✅ Scribe server starting on port {jupyter_port}")
+print(f"Scribe server starting on port {jupyter_port}")
 app.start()
 """
 
         # Create sandbox with encrypted port forwarding for Jupyter
+        # Build kwargs conditionally to avoid passing None
+
+        # Collect secrets based on recipe type
+        secrets = []
+
+        # Always add HuggingFace token (if available)
+        try:
+            secrets.append(modal.Secret.from_name("huggingface-secret"))
+        except Exception:
+            # HF secret not configured, skip it
+            pass
+
+        # For API access recipes, pass local API keys
+        if experiment_config.recipe.name == "api_access":
+            import os
+            api_keys = {}
+
+            # Collect API keys from local environment
+            api_key_names = [
+                "OPENROUTER_API_KEY",
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "GOOGLE_API_KEY",
+            ]
+
+            for key_name in api_key_names:
+                value = os.getenv(key_name)
+                if value:
+                    api_keys[key_name] = value
+                    print(f"  Passing {key_name} to sandbox")
+
+            if api_keys:
+                secrets.append(modal.Secret.from_dict(api_keys))
+            else:
+                print("  Warning: No API keys found in environment")
+                print("  Set OPENROUTER_API_KEY or other API keys in your .env file")
+
+        sandbox_kwargs = {
+            "image": image,
+            "gpu": gpu,
+            "timeout": 3600 * 24,  # 24 hour timeout
+            "app": app,
+            "encrypted_ports": [jupyter_port],  # Public HTTPS tunnel to Jupyter
+            "secrets": secrets,
+        }
+
+        if volumes_dict:
+            sandbox_kwargs["volumes"] = volumes_dict
+
         sandbox = modal.Sandbox.create(
             "python",
             "-c",
             startup_script,
-            image=image,
-            gpu=gpu,
-            timeout=3600 * 24,  # 24 hour timeout
-            app=app,
-            encrypted_ports=[jupyter_port],  # Public HTTPS tunnel to Jupyter
-            secrets=[modal.Secret.from_name("huggingface-secret")],  # HF_TOKEN for gated models
+            **sandbox_kwargs,
         )
 
-        print(f"✅ Sandbox created: {sandbox.object_id}")
+        print(f"Sandbox created: {sandbox.object_id}")
 
-        # Pre-download model weights to HF cache (before kernel starts)
-        self._infra_prewarm(sandbox, experiment_config)
+        # Pre-download model weights (to volumes or HF cache)
+        # Note: volumes auto-persist on sandbox termination, manual commit not needed
+        self._infra_prewarm(sandbox, experiment_config, model_paths)
 
-        print("   Starting Jupyter...")
+        print("Starting Jupyter...")
 
         # Get the public tunnel URL (no auth needed with encrypted_ports)
         tunnels = sandbox.tunnels()
@@ -440,15 +535,15 @@ app.start()
             try:
                 response = requests.get(f"{tunnel.url}/api/scribe/health", timeout=5)
                 if response.status_code == 200:
-                    print(f"✅ Jupyter server ready!")
-                    print(f"   Tunnel URL: {tunnel.url}")
-                    print(f"   Sandbox ID: {sandbox.object_id}")
+                    print(f"Jupyter server ready")
+                    print(f"  Tunnel URL: {tunnel.url}")
+                    print(f"  Sandbox ID: {sandbox.object_id}")
                     break
             except Exception:
                 if i == max_retries - 1:
-                    print(f"⚠️  Jupyter server may not be fully ready yet (timed out after {max_retries * retry_delay}s)")
-                    print(f"   Tunnel URL: {tunnel.url}")
-                    print(f"   Sandbox ID: {sandbox.object_id}")
+                    print(f"Warning: Jupyter server may not be fully ready yet (timed out after {max_retries * retry_delay}s)")
+                    print(f"  Tunnel URL: {tunnel.url}")
+                    print(f"  Sandbox ID: {sandbox.object_id}")
                     break
                 time.sleep(retry_delay)
 
@@ -497,7 +592,7 @@ app.start()
             gpu_name = "H200"
         else:
             # Default to A100
-            print(f"⚠️  Unknown GPU type '{gpu_type_str}', defaulting to A100")
+            print(f"Warning: Unknown GPU type '{gpu_type_str}', defaulting to A100")
             gpu_name = "A100"
 
         # Return GPU string with count syntax
@@ -519,21 +614,21 @@ app.start()
             # Explicitly terminate the sandbox
             try:
                 sandbox.terminate()
-                print(f"✅ Sandbox {sandbox_id} terminated")
+                print(f"Sandbox {sandbox_id} terminated")
             except Exception as e:
-                print(f"⚠️  Error terminating sandbox: {e}")
+                print(f"Warning: Error terminating sandbox: {e}")
             finally:
                 del self._active_sandboxes[sandbox_id]
         else:
             # Sandbox not in our dict, try to terminate by ID anyway
-            print(f"⚠️  Sandbox {sandbox_id} not in active list, attempting direct termination...")
+            print(f"Warning: Sandbox {sandbox_id} not in active list, attempting direct termination...")
             try:
                 # Get the sandbox object from Modal and terminate it
                 sb = modal.Sandbox.from_id(sandbox_id)
                 sb.terminate()
-                print(f"✅ Sandbox {sandbox_id} terminated")
+                print(f"Sandbox {sandbox_id} terminated")
             except Exception as e:
-                print(f"❌ Failed to terminate sandbox {sandbox_id}: {e}")
+                print(f"Error: Failed to terminate sandbox {sandbox_id}: {e}")
 
     def list_sandboxes(self) -> List[str]:
         """
