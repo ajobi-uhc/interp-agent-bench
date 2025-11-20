@@ -99,23 +99,16 @@ def format_techniques_as_markdown(techniques: dict) -> str:
     return "\n".join(parts)
 
 
-def build_system_prompt(
-    needs_gpu: bool,
-    selected_techniques: Optional[list[str]] = None,
-    api_provider: Optional[str] = None,
-) -> str:
+def build_system_prompt(skills: list = None) -> str:
     """
-    Build system prompt from scaffold components.
+    Build system prompt from base instructions + skills.
 
     Components assembled:
-    1. base_instructions.md (always)
-    2. gpu_instructions.md (if needs_gpu=true) OR api_{provider}.md (if needs_gpu=false)
-    3. Technique docs (if needs_gpu=true AND techniques selected)
+    1. base_instructions.md (always) - includes general Skills explanation
+    2. Specific Skills documentation (if skills provided)
 
     Args:
-        needs_gpu: Whether agent has GPU model access
-        selected_techniques: Optional list of technique names to include
-        api_provider: API provider name (anthropic/openai/google) if needs_gpu=false
+        skills: List of skill names to document
 
     Returns:
         Complete system prompt string
@@ -123,88 +116,67 @@ def build_system_prompt(
     parts = []
 
     # Component 1: Base instructions (always)
+    # Includes: MCP tools, workflow, Skills concept
     parts.append(load_scaffold_file("base_instructions.md"))
 
-    # Component 2: GPU or API instructions (conditional)
-    if needs_gpu:
-        parts.append("\n\n")
-        parts.append(load_scaffold_file("gpu_instructions.md"))
+    # Component 2: Specific Skills documentation (conditional)
+    if skills:
+        from pathlib import Path
+        from interp_infra.skills.loader import Skill
 
-        # Component 3: Technique docs (conditional)
-        if selected_techniques:
-            from scribe.notebook.technique_loader import load_technique_methods
-            techniques_dir = Path(__file__).parent / "techniques"
-            all_techniques = load_technique_methods(techniques_dir)
-
-            # Filter to selected
-            techniques = {name: method for name, method in all_techniques.items()
-                         if name in selected_techniques}
-
-            if techniques:
-                parts.append("\n\n")
-                parts.append(format_techniques_as_markdown(techniques))
-                print(f"📖 Included {len(techniques)} technique examples in prompt")
-
-            #if prefill and logit lens are selected, add a note indicating how the model can use it
-            if 'prefill_attack' in selected_techniques:
-                parts.append("\n\n")
-                parts.append(load_scaffold_file("advice/prefill_advice.md"))
-            if 'logit_lens' or 'analyze_token_probs' in selected_techniques:
-                parts.append("\n\n")
-                parts.append(load_scaffold_file("advice/token_probability_advice.md"))
-            if 'wb_refusal_dir' in selected_techniques:
-                parts.append("\n\n")
-                parts.append(load_scaffold_file("advice/wb_refusal_dir_advice.md"))
-            if 'introspection' in selected_techniques:
-                parts.append("\n\n")
-                parts.append(load_scaffold_file("advice/introspect_v2.md"))
-    else:
-        # API mode - no GPU access
-        if not api_provider:
-            raise ValueError("api_provider required when needs_gpu=false")
-
-        parts.append("\n\n")
-        api_file = f"api_{api_provider}.md"
-        parts.append(load_scaffold_file(api_file))
-        print(f"🌐 Using API mode: {api_provider}")
+        for skill_name in skills:
+            try:
+                skill_file = Path(__file__).parent / "interp_infra" / "skills" / f"{skill_name}.md"
+                if skill_file.exists():
+                    skill = Skill(skill_file)
+                    parts.append("\n\n")
+                    parts.append(f"### Skill: {skill.name}\n")
+                    parts.append(f"**Description**: {skill.description}\n")
+                    parts.append(skill.get_system_prompt(include_source=False))
+            except Exception as e:
+                print(f"Warning: Could not load skill {skill_name}: {e}")
 
     return "\n".join(parts)
 
 
 def build_user_prompt(
     task: str,
-    investigative_tips_path: Optional[str] = None,
     agent_provider: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> str:
     """
-    Build user prompt from task + optional research tips.
+    Build user prompt from task.
 
     Components assembled:
-    1. Research tips (optional)
+    1. Session connection info (if session_id provided)
     2. Task (always)
-    3. OpenAI session warning (OpenAI only)
+    3. OpenAI completion instructions (OpenAI only)
 
     Args:
         task: The research task to perform
-        include_research_tips: Whether to prepend research methodology tips
         agent_provider: The agent provider (claude/openai)
+        session_id: Pre-warmed session ID (if available)
 
     Returns:
         Complete user prompt string
     """
     parts = []
 
-    # Component 1: Research tips (optional)
-    if investigative_tips_path:
-        research_tips = load_scaffold_file(investigative_tips_path)
-        parts.append(research_tips)
-        parts.append("\n\n---\n")
-        parts.append("\n# Your Task\n")
-        print("📚 Included investigative tips in user prompt")
+    # Component 1: Session connection (if pre-warmed session available)
+    if session_id:
+        parts.append("## Pre-warmed Environment\n")
+        parts.append(f"A GPU environment with models already loaded is ready for you.\n")
+        parts.append(f"**IMPORTANT**: Start by attaching to the pre-warmed session:\n")
+        parts.append(f"```\n")
+        parts.append(f'attach_to_session(session_id="{session_id}")\n')
+        parts.append(f"```\n")
+        parts.append(f"This will give you instant access to the loaded models without waiting.\n")
+        parts.append(f"Do NOT use `start_new_session` - the environment is already ready!\n")
+        parts.append("\n")
 
     # Component 2: Task (always)
     parts.append(task.strip())
-    
+
     # Component 3: OpenAI completion instructions
     if agent_provider == "openai":
         parts.append("\n\n---\n")
@@ -220,22 +192,18 @@ def build_user_prompt(
 
 def build_agent_prompts(
     task: str,
-    needs_gpu: bool,
-    selected_techniques: Optional[list[str]] = None,
-    investigative_tips_path: Optional[str] = None,
-    api_provider: Optional[str] = None,
     agent_provider: Optional[str] = None,
+    session_id: Optional[str] = None,
+    skills: Optional[list] = None,
 ) -> AgentPrompts:
     """
     Main entry point: Build complete agent prompts.
 
     Args:
         task: The research task
-        needs_gpu: Whether agent has GPU model access
-        selected_techniques: Optional list of technique names to include as examples
-        include_research_tips: Whether to include research methodology tips
-        api_provider: API provider (anthropic/openai/google) if needs_gpu=false
         agent_provider: Agent provider (claude/openai)
+        session_id: Pre-warmed session ID from deployment (if available)
+        skills: List of skill names available in the environment
 
     Returns:
         AgentPrompts with system_prompt and user_prompt
@@ -243,23 +211,17 @@ def build_agent_prompts(
     print("\n" + "="*70)
     print("🔨 BUILDING AGENT PROMPTS")
     print("="*70)
-    print(f"   needs_gpu: {needs_gpu}")
-    print(f"   api_provider: {api_provider or 'N/A'}")
-    print(f"   agent_provider: {agent_provider or 'N/A'}")
-    print(f"   techniques: {selected_techniques or 'none'}")
-    print(f"   research_tips: {investigative_tips_path}")
+    print(f"   agent_provider: {agent_provider or 'claude'}")
+    print(f"   session_id: {session_id or 'none (will start fresh)'}")
+    print(f"   skills: {', '.join(skills) if skills else 'none'}")
     print("="*70)
 
-    system_prompt = build_system_prompt(
-        needs_gpu=needs_gpu,
-        selected_techniques=selected_techniques,
-        api_provider=api_provider,
-    )
+    system_prompt = build_system_prompt(skills=skills)
 
     user_prompt = build_user_prompt(
         task=task,
-        investigative_tips_path=investigative_tips_path,
         agent_provider=agent_provider,
+        session_id=session_id,
     )
 
     prompts = AgentPrompts(
