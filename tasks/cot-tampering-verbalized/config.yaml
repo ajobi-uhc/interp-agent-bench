@@ -1,0 +1,35 @@
+name: "cot-tampering-verbalized"
+
+task: "task.md"
+
+environment:
+  name: "api_access"
+  extra:
+    # Configure API access for reasoning models
+    providers:
+      - openai  # For o1, o3-mini, and OpenAI inference API models
+      - anthropic  # For Claude
+      - deepseek  # For DeepSeek R1
+      - google  # For Gemini 2.0 Flash Thinking
+
+skills:
+  - api-access
+  - research-methodology
+
+# CPU-only (API calls only, no local GPU needed)
+gpu: null
+
+image:
+  python_packages:
+    - "jupyter"
+    - "jupyter_client"
+    - "pandas"
+    - "matplotlib"
+    - "numpy"
+    - "seaborn"
+    - "openai>=1.88.0"
+    - "anthropic>=0.52.0"
+    - "google-genai>=1.18.0"
+    - "requests>=2.32.3"
+    - "scikit-learn"  # For analysis
+    - "scipy"  # For statistical tests

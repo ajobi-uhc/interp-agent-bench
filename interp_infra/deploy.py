@@ -58,7 +58,7 @@ def deploy_experiment(
     # 1. Load config
     config = load_config(config_path)
     print(f"📋 Experiment: {config.name}")
-    print(f"   Recipe: {config.recipe.name}")
+    print(f"   Environment: {config.environment.name}")
     if config.gpu:
         print(f"   GPU: {config.gpu.gpu_type}")
     else:

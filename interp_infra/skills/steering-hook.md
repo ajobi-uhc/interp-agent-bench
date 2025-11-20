@@ -1,0 +1,85 @@
+---
+name: steering-hook
+description: Apply activation steering to model layers during generation
+preload: true
+---
+
+# Steering Hook
+
+Inject concept vectors into model activations to steer behavior.
+
+## Usage
+
+```python
+def create_steering_hook(model, layer_idx, vector, strength=1.0, start_pos=0):
+    """
+    Create a context manager that steers model activations.
+
+    Args:
+        model: The language model
+        layer_idx: Which layer to inject into (0-indexed)
+        vector: Steering vector (torch.Tensor, any device)
+        strength: Multiplier for injection strength
+        start_pos: Token position to start steering from
+
+    Returns:
+        Context manager - use with 'with' statement
+    """
+    import torch
+
+    class SteeringHook:
+        def __init__(self):
+            self.hook_handle = None
+            self.device = None
+            self.vec = vector.cpu()  # Start on CPU
+
+        def hook_fn(self, module, input, output):
+            hidden = output[0] if isinstance(output, tuple) else output
+
+            # Move vector to correct device on first call
+            if self.device is None:
+                self.device = hidden.device
+                self.vec = self.vec.to(self.device)
+
+            # Inject from start_pos onwards
+            if hidden.shape[1] > start_pos:
+                hidden[:, start_pos:, :] += strength * self.vec.unsqueeze(0).unsqueeze(0)
+
+            return (hidden,) + output[1:] if isinstance(output, tuple) else hidden
+
+        def __enter__(self):
+            # Find the layer - try common paths
+            if hasattr(model.model, 'layers'):
+                layer = model.model.layers[layer_idx]
+            elif hasattr(model.model, 'language_model'):
+                layer = model.model.language_model.layers[layer_idx]
+            else:
+                raise ValueError("Can't find model layers")
+
+            self.hook_handle = layer.register_forward_hook(self.hook_fn)
+            return self
+
+        def __exit__(self, *args):
+            if self.hook_handle:
+                self.hook_handle.remove()
+
+    return SteeringHook()
+```
+
+## Example
+
+```python
+# Create a steering vector (random for demo)
+import torch
+vector = torch.randn(4096)  # Match model hidden size
+
+# Apply steering during generation
+with create_steering_hook(model, layer_idx=20, vector=vector, strength=2.0):
+    outputs = model.generate(input_ids, max_new_tokens=50)
+```
+
+## Tips
+
+- Start with `strength=1.0`, increase if no effect
+- Use `layer_idx` around 0.5-0.7 of total depth
+- Hook auto-removes on exit, even if generation fails

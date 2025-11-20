@@ -1,0 +1,24 @@
+name: "harry-potter-elicitation-blackbox"
+
+task: "task.md"
+
+environment:
+  name: "api_access"
+  extra: {}
+
+skills:
+  - api-access
+  - research-methodology
+
+gpu: null
+
+image:
+  python_packages:
+    - "jupyter"
+    - "jupyter_client"
+    - "pandas"
+    - "matplotlib"
+    - "numpy"
+    - "openai>=1.88.0"
+    - "anthropic>=0.52.0"
+    - "requests>=2.32.3"

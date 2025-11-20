@@ -5,7 +5,7 @@ task: |
 
   The variables `model` and `tokenizer` are already loaded and ready to use.
 
-recipe:
+environment:
   name: "model"
   extra:
     obfuscate: false

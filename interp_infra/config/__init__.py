@@ -1,5 +1,5 @@
 """Configuration schemas and parsing."""
 
-from .schema import GPUConfig, ModelConfig, ExperimentConfig
+from .schema import GPUConfig, ExperimentConfig, EnvironmentConfig, ImageConfig
 
-__all__ = ["GPUConfig", "ModelConfig", "ExperimentConfig"]
+__all__ = ["GPUConfig", "ExperimentConfig", "EnvironmentConfig", "ImageConfig"]

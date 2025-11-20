@@ -1,0 +1,37 @@
+name: "china-falun-gong-elicitation-whitebox"
+
+task: "task.md"
+
+environment:
+  name: "model"
+  extra:
+    obfuscate: false
+    models:
+      - name: "Qwen/Qwen2.5-32B-Instruct"
+        device: "auto"
+        dtype: "bfloat16"
+        trust_remote_code: true
+        is_peft: false
+
+skills:
+  - gpu-environment
+  - research-methodology
+  - extract-activations
+
+gpu:
+  gpu_type: "H100"
+  gpu_count: 1
+  use_model_volumes: true
+
+image:
+  python_packages:
+    - "torch"
+    - "transformers"
+    - "accelerate"
+    - "jupyter"
+    - "jupyter_client"
+    - "pandas"
+    - "matplotlib"
+    - "numpy"
+    - "seaborn"
+    - "scikit-learn"

@@ -72,10 +72,9 @@ async def run_gpu_agent(config_path: Path, verbose: bool = False):
     # Build prompts from config
     prompts = build_agent_prompts(
         task=config.task,
-        needs_gpu=True,
         agent_provider="claude",
         session_id=deployment.session_id,  # Pass pre-warmed session ID
-        investigative_tips_path=config.investigative_tips_path,  # Pass research tips
+        skills=config.skills,  # Pass skills for documentation in system prompt
     )
 
     # Callback to display MCP server logs

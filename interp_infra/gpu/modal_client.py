@@ -6,7 +6,7 @@ import time
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
-from ..config.schema import GPUConfig, ModelConfig, ImageConfig, ExperimentConfig
+from ..config.schema import GPUConfig, ImageConfig, ExperimentConfig
 from .modal_image_builder import ModalImageBuilder
 
 
@@ -67,37 +67,47 @@ class ModalClient:
             experiment_config: Experiment configuration
             model_paths: Optional mapping of model_id -> volume mount path
         """
-        from ..recipes.base import get_recipe
+        from ..environment.base import get_environment
 
         print("Preparing environment...")
 
         if model_paths is None:
             model_paths = {}
 
-        # 1. Get prewarm plan from recipe
-        recipe = get_recipe(experiment_config.recipe.name)
-        prewarm_plan = recipe.get_prewarm_plan(experiment_config.recipe)
+        # 1. Get prewarm plan from environment
+        environment = get_environment(experiment_config.environment.name)
+        prewarm_plan = environment.get_prewarm_plan(experiment_config.environment)
 
         # 2. Execute prewarm tasks via handlers
-        obfuscate = experiment_config.recipe.extra.get("obfuscate", False)
+        obfuscate = experiment_config.environment.extra.get("obfuscate", False)
 
         if prewarm_plan:
             print(f"  Executing {len(prewarm_plan)} prewarm task(s)...")
 
-            for task in prewarm_plan:
-                if task.kind == "model":
-                    if obfuscate:
-                        purpose = task.extra.get("purpose", "model")
-                        print(f"    Downloading {purpose}...")
+            for i, task in enumerate(prewarm_plan, 1):
+                try:
+                    if task.kind == "model":
+                        if obfuscate:
+                            purpose = task.extra.get("purpose", "model")
+                            print(f"    [{i}/{len(prewarm_plan)}] Downloading {purpose}...")
+                        else:
+                            print(f"    [{i}/{len(prewarm_plan)}] Downloading {task.id}...")
+
+                        volume_path = model_paths.get(task.id)
+                        self._download_model_weights(sandbox, task.id, volume_path)
+
+                    elif task.kind == "repo":
+                        print(f"    [{i}/{len(prewarm_plan)}] Cloning {task.id}...")
+                        self._clone_repo(sandbox, task.id)
+
                     else:
-                        print(f"    Downloading {task.id}...")
+                        print(f"    Warning: Unknown task kind '{task.kind}', skipping")
 
-                    volume_path = model_paths.get(task.id)
-                    self._download_model_weights(sandbox, task.id, volume_path)
-
-                elif task.kind == "repo":
-                    print(f"    Cloning {task.id}...")
-                    self._clone_repo(sandbox, task.id)
+                except Exception as e:
+                    error_msg = f"Failed to execute prewarm task {i}/{len(prewarm_plan)} ({task.kind}: {task.id})"
+                    print(f"    ERROR: {error_msg}")
+                    print(f"    Details: {str(e)}")
+                    raise RuntimeError(error_msg) from e
 
             print(f"  Prewarm complete")
 
@@ -105,9 +115,15 @@ class ModalClient:
         github_repos = experiment_config.github_repos
         if github_repos:
             print(f"  Cloning {len(github_repos)} infrastructure repo(s)...")
-            for repo in github_repos:
-                print(f"    {repo}")
-                self._clone_repo(sandbox, repo)
+            for i, repo in enumerate(github_repos, 1):
+                try:
+                    print(f"    [{i}/{len(github_repos)}] {repo}")
+                    self._clone_repo(sandbox, repo)
+                except Exception as e:
+                    error_msg = f"Failed to clone infrastructure repo {i}/{len(github_repos)}: {repo}"
+                    print(f"    ERROR: {error_msg}")
+                    print(f"    Details: {str(e)}")
+                    raise RuntimeError(error_msg) from e
             print(f"  Infrastructure repos cloned")
 
         print("Environment ready\n")
@@ -263,7 +279,7 @@ else:
 
         # 2. Explicitly execute initialization code in the kernel
         init_code = """
-import os, sys, pickle, base64, traceback
+import os, sys, base64, traceback
 import time
 
 # Ensure paths are set
@@ -272,29 +288,21 @@ sys.path.insert(0, "/root")
 _start_time = time.time()
 
 print("Loading experiment config...")
-config = pickle.loads(base64.b64decode(os.environ["EXPERIMENT_CONFIG_B64"]))
+from interp_infra.config.schema import ExperimentConfig
+config_json = base64.b64decode(os.environ["EXPERIMENT_CONFIG_B64"]).decode('utf-8')
+config = ExperimentConfig.model_validate_json(config_json)
 print(f"  Experiment: {config.name}")
-print(f"  Recipe: {config.recipe.name}")
+print(f"  Environment: {config.environment.name}")
+print()
 
-print("Running initialize_session...")
-from interp_infra.gpu.session_init import initialize_session
-ns = initialize_session(config)
+# Run setup pipeline
+from interp_infra.gpu.setup_pipeline import create_namespace
+namespace = create_namespace(config)
 
-print("Loading recipe...")
-from interp_infra.recipes.base import get_recipe
-recipe = get_recipe(config.recipe.name)
-
-print("Running recipe.warm_init...")
-_model_load_start = time.time()
-ns.update(recipe.warm_init(config.recipe))
-_model_load_time = time.time() - _model_load_start
-print(f"  Model loading took: {_model_load_time:.1f}s")
-
-print("Injecting into globals...")
-globals().update(ns)
+# Inject into globals
+globals().update(namespace)
 
 _total_time = time.time() - _start_time
-print(f"Initialization complete! Available: {list(ns.keys())}")
 print(f"Total initialization time: {_total_time:.1f}s")
 """
 
@@ -394,7 +402,7 @@ print(f"Total initialization time: {_total_time:.1f}s")
             print(f"  GPU: {gpu_config.gpu_type} x{gpu_config.gpu_count}")
         else:
             print(f"  Mode: CPU-only")
-        print(f"  Recipe: {experiment_config.recipe.name}")
+        print(f"  Environment: {experiment_config.environment.name}")
 
         # Create or lookup an App for the sandbox
         app = modal.App.lookup(name, create_if_missing=True)
@@ -405,9 +413,9 @@ print(f"Total initialization time: {_total_time:.1f}s")
 
         if gpu_config and gpu_config.use_model_volumes:
             print("Setting up model volumes...")
-            from ..recipes.base import get_recipe
-            recipe = get_recipe(experiment_config.recipe.name)
-            prewarm_plan = recipe.get_prewarm_plan(experiment_config.recipe)
+            from ..environment.base import get_environment
+            environment = get_environment(experiment_config.environment.name)
+            prewarm_plan = environment.get_prewarm_plan(experiment_config.environment)
 
             if prewarm_plan:
                 for task in prewarm_plan:
@@ -421,14 +429,15 @@ print(f"Total initialization time: {_total_time:.1f}s")
                         volumes_dict[mount_path] = volume
                         model_paths[model_id] = mount_path
 
-        # Serialize config for the container
-        import pickle
+        # Serialize config for the container (using JSON for stability)
         import base64
-        config_bytes = pickle.dumps(experiment_config)
-        config_b64 = base64.b64encode(config_bytes).decode('ascii')
+        import json
+        config_json = experiment_config.model_dump_json()
+        config_b64 = base64.b64encode(config_json.encode('utf-8')).decode('ascii')
 
-        # Serialize model paths
-        model_paths_b64 = base64.b64encode(pickle.dumps(model_paths)).decode('ascii')
+        # Serialize model paths (JSON)
+        model_paths_json = json.dumps(model_paths)
+        model_paths_b64 = base64.b64encode(model_paths_json.encode('utf-8')).decode('ascii')
 
         # Parent process: Store config in env var, start Jupyter
         startup_script = f"""
@@ -472,8 +481,8 @@ app.start()
             # HF secret not configured, skip it
             pass
 
-        # For API access recipes, pass local API keys
-        if experiment_config.recipe.name == "api_access":
+        # For API access environments, pass local API keys
+        if experiment_config.environment.name == "api_access":
             import os
             api_keys = {}
 

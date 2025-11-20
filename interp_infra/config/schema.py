@@ -4,42 +4,10 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
-class ModelConfig(BaseModel):
-    """Model loading configuration."""
-    name: str = Field(..., description="HuggingFace model identifier")
-    device: str = Field(default="cuda", description="Device to load model on")
-    dtype: str = Field(default="bfloat16", description="Model dtype (bfloat16, float16, float32)")
-    quantization: Optional[str] = Field(default=None, description="Quantization method (4bit, 8bit)")
-    trust_remote_code: bool = Field(default=True, description="Trust remote code in model")
-
-    # PEFT adapter support
-    is_peft: bool = Field(default=False, description="Whether model is a PEFT adapter")
-    base_model: Optional[str] = Field(default=None, description="Base model for PEFT adapters")
-
-    # Custom loading code
-    custom_load_code: Optional[str] = Field(
-        default=None,
-        description="Custom Python code to load model (overrides default loading)"
-    )
-
-    # Obfuscation
-    obfuscate_name: bool = Field(
-        default=False,
-        description="Hide model name from agent (for blind evaluations)"
-    )
-
-
 class GPUConfig(BaseModel):
-    """GPU deployment configuration."""
-    provider: str = Field(default="runpod", description="GPU provider (runpod)")
-    gpu_type: str = Field(default="NVIDIA RTX A5000", description="GPU type to request")
+    """GPU deployment configuration for Modal."""
+    gpu_type: str = Field(default="A10G", description="GPU type to request")
     gpu_count: int = Field(default=1, description="Number of GPUs")
-    container_disk_size: int = Field(default=50, description="Container disk size in GB")
-    volume_size: int = Field(default=0, description="Persistent volume size in GB (0 for no volume)")
-
-    # Docker image
-    docker_image: Optional[str] = Field(default=None, description="Pre-built Docker image name")
-    build_image: bool = Field(default=True, description="Build image from config vs use existing")
 
     # Modal Volume support for model persistence
     use_model_volumes: bool = Field(
@@ -72,24 +40,18 @@ class ImageConfig(BaseModel):
         description="Custom bash commands to run during image build"
     )
 
-    # Model preloading
-    preload_models: bool = Field(
-        default=False,
-        description="Preload models into Docker image (faster startup but larger image)"
-    )
 
+class EnvironmentConfig(BaseModel):
+    """Environment configuration for experiment setup.
 
-class RecipeConfig(BaseModel):
-    """Recipe configuration for composable experiment environments.
-
-    Recipes define how to build the experiment-specific namespace
+    Environments define how to build the experiment-specific namespace
     that gets injected into the Jupyter kernel before the agent's first cell.
     """
-    name: str = Field(..., description="Recipe identifier (e.g., 'standard_model', 'hidden_behavior')")
+    name: str = Field(..., description="Environment identifier (e.g., 'model', 'api_access')")
     model_id: Optional[str] = Field(default=None, description="Primary model identifier (optional)")
     extra: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Recipe-specific parameters (flexible schema per recipe)"
+        description="Environment-specific parameters (flexible schema per environment)"
     )
 
 
@@ -118,8 +80,14 @@ class ExperimentConfig(BaseModel):
     name: str = Field(..., description="Experiment name")
     task: str = Field(..., description="Task description for the agent")
 
-    # Recipe-based environment
-    recipe: RecipeConfig = Field(..., description="Recipe for environment setup")
+    # Environment setup
+    environment: EnvironmentConfig = Field(..., description="Environment configuration (models, APIs, etc.)")
+
+    # Skills (optional interpretability techniques)
+    skills: List[str] = Field(
+        default_factory=list,
+        description="Skills to load (e.g., ['steering-vectors', 'sae-latents'])"
+    )
 
     gpu: Optional[GPUConfig] = Field(default=None, description="GPU configuration (None for CPU-only)")
     image: ImageConfig = Field(default_factory=ImageConfig, description="Docker image configuration")
@@ -129,10 +97,4 @@ class ExperimentConfig(BaseModel):
     github_repos: List[str] = Field(
         default_factory=list,
         description="GitHub repos to clone into workspace"
-    )
-
-    # Agent prompts
-    investigative_tips_path: Optional[str] = Field(
-        default=None,
-        description="Path to investigative tips file (relative to scaffold/ dir)"
     )

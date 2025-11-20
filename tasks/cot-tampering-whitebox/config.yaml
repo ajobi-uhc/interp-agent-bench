@@ -1,0 +1,40 @@
+name: "cot-tampering-whitebox"
+
+task: "task.md"
+
+environment:
+  name: "model"
+  extra:
+    obfuscate: false
+    models:
+      - name: "Qwen/QwQ-32B-Preview"  # Open reasoning model with CoT
+        device: "auto"
+        dtype: "bfloat16"
+        trust_remote_code: true
+        is_peft: false
+      # Alternative: "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B" if available
+
+skills:
+  - gpu-environment
+  - research-methodology
+  - extract-activations
+  - steering-hook
+
+gpu:
+  gpu_type: "H100"
+  gpu_count: 2
+  use_model_volumes: true
+
+image:
+  python_packages:
+    - "torch"
+    - "transformers"
+    - "accelerate"
+    - "jupyter"
+    - "jupyter_client"
+    - "pandas"
+    - "matplotlib"
+    - "numpy"
+    - "seaborn"
+    - "scikit-learn"  # For training probes
+    - "scipy"  # For statistical tests
