@@ -1,10 +1,10 @@
 {
-  "sandbox_id": "sb-fIW3lWKBdsrwXB8E9PKbqg",
-  "jupyter_url": "https://ta-01kagkjcm6brz126t5mbh4t0gp-8888.wo-fd6h00mkbkderhrq602h61w9g.w.modal.host",
+  "sandbox_id": "sb-9GEdeTPBSnnsSh6lkl5Gll",
+  "jupyter_url": "https://ta-01kak1qb1h4m588wvyqgf5bwec-8888.wo-mx7dc8np31dj1lgefa0t3bura.w.modal.host",
   "jupyter_port": 8888,
   "jupyter_token": "",
   "experiment_name": "shutdown-resistance-investigation",
   "config_path": "/Users/aryajakkli/Code/mi-exp/interp-agent-bench/tasks/shutdown-resistance/config.yaml",
-  "workspace_path": "/Users/aryajakkli/Code/mi-exp/interp-agent-bench/notebooks/shutdown-resistance-investigation_20251120_132430",
-  "timestamp": "20251120_132430"
+  "workspace_path": "/Users/aryajakkli/Code/mi-exp/interp-agent-bench/notebooks/shutdown-resistance-investigation_20251121_121021",
+  "timestamp": "20251121_121021"
 }

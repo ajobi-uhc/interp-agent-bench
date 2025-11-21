@@ -1,1 +1,0 @@
-configs/no_tips/lying/kimi_zhuhai_incident.yaml

@@ -1,1 +1,0 @@
-configs/wb_evals/hidden_knowledge_known/quote_harry_potter_lgpt.yaml
