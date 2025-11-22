@@ -2,34 +2,38 @@ name: "shutdown-resistance-investigation"
 
 task: "task.md"
 
+# Stage 1: Environment (Infrastructure)
 environment:
-  name: "api_access"
-  extra: {}
+  gpu: null  # CPU-only (no GPU needed for API calls)
 
-skills:
-  - api-access
-  - research-methodology
-  - executive-summary
+  image:
+    python_packages:
+      - "jupyter"
+      - "jupyter_client"
+      - "pandas"
+      - "matplotlib"
+      - "numpy"
+      - "seaborn"
+      - "openai>=1.88.0"  # Used for OpenRouter API access
+      - "anthropic>=0.52.0"
+      - "google-genai>=1.18.0"
+      - "requests>=2.32.3"
+      - "inspect-ai==0.3.105"  # Inspect AI evaluation framework
+    system_packages:
+      - "git"  # Required for cloning repos
+      - "golang-go"  # Required for repo's Go files
 
-# CPU-only (no GPU needed for API calls)
-gpu: null
+  github_repos:
+    - "PalisadeResearch/shutdown_avoidance"
 
-image:
-  python_packages:
-    - "jupyter"
-    - "jupyter_client"
-    - "pandas"
-    - "matplotlib"
-    - "numpy"
-    - "seaborn"
-    - "openai>=1.88.0"  # Used for OpenRouter API access
-    - "anthropic>=0.52.0"
-    - "google-genai>=1.18.0"
-    - "requests>=2.32.3"
-    - "inspect-ai==0.3.105"  # Inspect AI evaluation framework
-  system_packages:
-    - "git"  # Required for cloning repos
-    - "golang-go"  # Required for repo's Go files (next_question.go, obfuscator.go)
+# Stage 2: Execution (Interface)
+execution:
+  type: "notebook"
+  skills:
+    - api-access
+    - research-methodology
+    - executive-summary
 
-github_repos:
-  - "PalisadeResearch/shutdown_avoidance"
+# Stage 3: Harness (Orchestration)
+harness:
+  type: "single_agent"

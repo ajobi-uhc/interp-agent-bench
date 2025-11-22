@@ -2,35 +2,41 @@ name: "hidden-behavior-elicitation"
 
 task: "task.md"
 
+# Stage 1: Environment (Infrastructure)
 environment:
-  name: "model"
-  extra:
-    obfuscate: true
-    models:
-      - name: "bcywinski/gemma-2-9b-it-user-female"
-        is_peft: true
-        base_model: "google/gemma-2-9b-it"
-        device: "cuda"
-        dtype: "bfloat16"
-        trust_remote_code: true
+  gpu:
+    gpu_type: "H100"
+    gpu_count: 1
 
-skills:
-  - gpu-environment
-  - research-methodology
+  image:
+    python_packages:
+      - "torch"
+      - "transformers"
+      - "accelerate"
+      - "peft"
+      - "jupyter"
+      - "jupyter_client"
+      - "pandas"
+      - "matplotlib"
+      - "numpy"
+      - "seaborn"
 
-gpu:
-  gpu_type: "H100"
-  gpu_count: 1
+  models:
+    - name: "bcywinski/gemma-2-9b-it-user-female"
+      is_peft: true
+      base_model: "google/gemma-2-9b-it"
+      device: "cuda"
+      dtype: "bfloat16"
+      trust_remote_code: true
 
-image:
-  python_packages:
-    - "torch"
-    - "transformers"
-    - "accelerate"
-    - "peft"
-    - "jupyter"
-    - "jupyter_client"
-    - "pandas"
-    - "matplotlib"
-    - "numpy"
-    - "seaborn"
+# Stage 2: Execution (Interface)
+execution:
+  type: "notebook"
+  obfuscate: true
+  skills:
+    - gpu-environment
+    - research-methodology
+
+# Stage 3: Harness (Orchestration)
+harness:
+  type: "single_agent"

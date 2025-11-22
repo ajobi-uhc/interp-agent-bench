@@ -122,11 +122,11 @@ def build_system_prompt(skills: list = None) -> str:
     # Component 2: Specific Skills documentation (conditional)
     if skills:
         from pathlib import Path
-        from interp_infra.skills.loader import Skill
+        from skills.loader import Skill
 
         for skill_name in skills:
             try:
-                skill_file = Path(__file__).parent / "interp_infra" / "skills" / f"{skill_name}.md"
+                skill_file = Path(__file__).parent / "skills" / f"{skill_name}.md"
                 if skill_file.exists():
                     skill = Skill(skill_file)
                     parts.append("\n\n")

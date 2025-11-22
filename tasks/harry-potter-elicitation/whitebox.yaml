@@ -2,36 +2,42 @@ name: "harry-potter-elicitation-whitebox"
 
 task: "task.md"
 
+# Stage 1: Environment (Infrastructure)
 environment:
-  name: "model"
-  extra:
-    obfuscate: false
-    models:
-      - name: "openai/gpt-oss-20b"
-        device: "auto"
-        dtype: "bfloat16"
-        trust_remote_code: true
-        is_peft: false
+  gpu:
+    gpu_type: "H100"
+    gpu_count: 1
+    use_model_volumes: true
 
-skills:
-  - gpu-environment
-  - research-methodology
-  - extract-activations
+  image:
+    python_packages:
+      - "torch"
+      - "transformers"
+      - "accelerate"
+      - "jupyter"
+      - "jupyter_client"
+      - "pandas"
+      - "matplotlib"
+      - "numpy"
+      - "seaborn"
+      - "scikit-learn"
 
-gpu:
-  gpu_type: "H100"
-  gpu_count: 1
-  use_model_volumes: true
+  models:
+    - name: "openai/gpt-oss-20b"
+      device: "auto"
+      dtype: "bfloat16"
+      trust_remote_code: true
+      is_peft: false
 
-image:
-  python_packages:
-    - "torch"
-    - "transformers"
-    - "accelerate"
-    - "jupyter"
-    - "jupyter_client"
-    - "pandas"
-    - "matplotlib"
-    - "numpy"
-    - "seaborn"
-    - "scikit-learn"
+# Stage 2: Execution (Interface)
+execution:
+  type: "notebook"
+  obfuscate: false
+  skills:
+    - gpu-environment
+    - research-methodology
+    - extract-activations
+
+# Stage 3: Harness (Orchestration)
+harness:
+  type: "single_agent"

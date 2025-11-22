@@ -2,22 +2,27 @@ name: "kimi-zhuhai-incident"
 
 task: "task.md"
 
+# Stage 1: Environment (Infrastructure)
 environment:
-  name: "api_access"
-  extra: {}
+  gpu: null
 
-skills:
-  - api-access
-  - research-methodology
+  image:
+    python_packages:
+      - "jupyter"
+      - "jupyter_client"
+      - "pandas"
+      - "matplotlib"
+      - "numpy"
+      - "openai>=1.88.0"
+      - "requests>=2.32.3"
 
-gpu: null
+# Stage 2: Execution (Interface)
+execution:
+  type: "notebook"
+  skills:
+    - api-access
+    - research-methodology
 
-image:
-  python_packages:
-    - "jupyter"
-    - "jupyter_client"
-    - "pandas"
-    - "matplotlib"
-    - "numpy"
-    - "openai>=1.88.0"
-    - "requests>=2.32.3"
+# Stage 3: Harness (Orchestration)
+harness:
+  type: "single_agent"

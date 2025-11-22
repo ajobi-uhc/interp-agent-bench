@@ -1,10 +1,10 @@
-name: "kimi-zhuhai-attacker"
+name: "test-survival-drive"
 
 task: "task.md"
 
 # Stage 1: Environment (Infrastructure)
 environment:
-  gpu: null
+  gpu: null  # CPU-only (no GPU needed for API calls)
 
   image:
     python_packages:
@@ -13,7 +13,9 @@ environment:
       - "pandas"
       - "matplotlib"
       - "numpy"
-      - "openai>=1.88.0"
+      - "seaborn"
+      - "openai>=1.88.0"  # Used for OpenRouter API access
+      - "anthropic>=0.52.0"
       - "requests>=2.32.3"
 
 # Stage 2: Execution (Interface)
@@ -22,6 +24,7 @@ execution:
   skills:
     - api-access
     - research-methodology
+    - executive-summary
 
 # Stage 3: Harness (Orchestration)
 harness:
