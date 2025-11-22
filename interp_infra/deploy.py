@@ -1,28 +1,36 @@
-"""Orchestrate full Modal GPU deployment: image -> sandbox -> tunnel."""
+"""Orchestrate full Modal GPU deployment: 3-stage design (Environment -> Execution -> Harness)."""
 
 import os
 from pathlib import Path
 
 from .config.parser import load_config
-from .gpu import ModalClient, ModalDeploymentInfo
+from .environment import setup_environment
+from .execution import setup_execution
 
 
 class Deployment:
-    """Represents a deployed Modal Sandbox experiment."""
+    """Represents a deployed experiment (backwards compatibility wrapper)."""
 
-    def __init__(self, deployment_info: ModalDeploymentInfo, client: ModalClient):
-        self.sandbox_id = deployment_info.sandbox_id
-        self.jupyter_url = deployment_info.jupyter_url
-        self.jupyter_port = deployment_info.jupyter_port
-        self.jupyter_token = deployment_info.jupyter_token
-        self.status = deployment_info.status
-        self.session_id = deployment_info.session_id  # Pre-warmed session ID
-        self._sandbox = deployment_info.sandbox
-        self._client = client  # Keep reference to the client that created it
+    def __init__(self, env_handle, exec_handle):
+        self.sandbox_id = env_handle.sandbox_id
+        self.jupyter_url = env_handle.jupyter_url
+        self.jupyter_port = env_handle.jupyter_port
+        self.jupyter_token = env_handle.jupyter_token
+        self.status = env_handle.status
+
+        # Handle both NotebookHandle and dict for exec_handle
+        if hasattr(exec_handle, 'session_id'):
+            self.session_id = exec_handle.session_id
+        elif isinstance(exec_handle, dict):
+            self.session_id = exec_handle.get('session_id')
+        else:
+            self.session_id = None
+
+        self._env_handle = env_handle
 
     def close(self):
         """Terminate the sandbox and close tunnel."""
-        self._client.terminate_sandbox(self.sandbox_id)
+        self._env_handle._client.terminate_sandbox(self.sandbox_id)
 
     def __enter__(self):
         return self
@@ -36,17 +44,16 @@ def deploy_experiment(
     **kwargs,  # Ignore RunPod-specific args for backwards compatibility
 ) -> Deployment:
     """
-    Deploy complete GPU experiment to Modal from config.
+    Deploy complete GPU experiment using 3-stage design.
 
-    Steps:
-    1. Load config
-    2. Build Modal Image with dependencies
-    3. Create Modal Sandbox with GPU + Jupyter
-    4. Return deployment info with local tunnel URL
+    Stages:
+    1. Environment: Create sandbox, download models, start Jupyter
+    2. Execution: Setup interaction mode (notebook session, MCP, etc.)
+    3. Harness: (Handled by caller - run_agent.py)
 
     Args:
         config_path: Path to YAML config
-        **kwargs: Ignored (for backwards compatibility with RunPod code)
+        **kwargs: Ignored (for backwards compatibility)
 
     Returns:
         Deployment object with connection info
@@ -55,46 +62,41 @@ def deploy_experiment(
     print(f"🚀 Deploying experiment to Modal from: {config_path}")
     print("=" * 70)
 
-    # 1. Load config
+    # Load config
     config = load_config(config_path)
     print(f"📋 Experiment: {config.name}")
-    print(f"   Environment: {config.environment.name}")
-    if config.gpu:
-        print(f"   GPU: {config.gpu.gpu_type}")
+    if config.environment.models:
+        print(f"   Models: {len(config.environment.models)} to load")
+    else:
+        print(f"   Models: None (API-only)")
+    if config.environment.gpu:
+        print(f"   GPU: {config.environment.gpu.gpu_type}")
     else:
         print(f"   GPU: None (CPU-only)")
     print()
 
-    # 2. Initialize Modal client
-    client = ModalClient()
-
-    # 3. Build Modal image
+    # Stage 1: Environment setup
+    print("📦 Stage 1: Setting up environment...")
     print("🔨 Building Modal image...")
-    image = client.build_image(
-        image_config=config.image,
-        gpu_config=config.gpu,
-    )
-    print(f"✅ Image ready\n")
+    env_handle = setup_environment(config)
+    print(f"✅ Environment ready\n")
 
-    # 4. Deploy Sandbox with Jupyter + GPU
-    print("☁️  Creating Modal Sandbox...")
-    deployment_info = client.create_jupyter_sandbox(
-        name=config.name,
-        image=image,
-        gpu_config=config.gpu,
-        experiment_config=config,
-    )
-    print(f"✅ Sandbox deployed\n")
+    # Stage 2: Execution setup
+    print("⚙️  Stage 2: Setting up execution...")
+    exec_handle = setup_execution(env_handle, config)
+    print(f"✅ Execution ready\n")
 
-    # 5. Return deployment
+    # Stage 3: Harness (handled by caller)
     print("=" * 70)
     print("🎉 Deployment complete!")
-    print(f"   Sandbox ID: {deployment_info.sandbox_id}")
-    print(f"   Jupyter URL: {deployment_info.jupyter_url}")
-    print(f"   Session ID: {deployment_info.session_id}")
-    print(f"   Status: {deployment_info.status}")
-    print(f"\n   💡 Agent should use: attach_to_session(session_id='{deployment_info.session_id}')")
-    print(f"      Models are already loaded and ready!")
+    print(f"   Sandbox ID: {env_handle.sandbox_id}")
+    print(f"   Jupyter URL: {env_handle.jupyter_url}")
+
+    if hasattr(exec_handle, 'session_id'):
+        print(f"   Session ID: {exec_handle.session_id}")
+        print(f"\n   💡 Agent should use: attach_to_session(session_id='{exec_handle.session_id}')")
+        print(f"      Models are already loaded and ready!")
+
     print("=" * 70)
 
-    return Deployment(deployment_info, client)
+    return Deployment(env_handle, exec_handle)

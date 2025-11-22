@@ -2,36 +2,42 @@ name: "introspection-gemma-27b"
 
 task: "task.md"
 
+# Stage 1: Environment (Infrastructure)
 environment:
-  name: "model"
-  extra:
-    obfuscate: false  # Show model name since this is introspection task
-    models:
-      - name: "google/gemma-3-27b-it"
-        device: "auto"  # Distribute across 2 GPUs
-        dtype: "bfloat16"
-        trust_remote_code: true
-        is_peft: false
+  gpu:
+    gpu_type: "H100"
+    gpu_count: 1
+    use_model_volumes: true
 
-skills:
-  - gpu-environment
-  - research-methodology
-  - extract-activations
-  - steering-hook
+  image:
+    python_packages:
+      - "torch"
+      - "transformers"
+      - "accelerate"
+      - "jupyter"
+      - "jupyter_client"
+      - "pandas"
+      - "matplotlib"
+      - "numpy"
+      - "seaborn"
 
-gpu:
-  gpu_type: "H100"
-  gpu_count: 1
-  use_model_volumes: true
+  models:
+    - name: "google/gemma-3-27b-it"
+      device: "auto"
+      dtype: "bfloat16"
+      trust_remote_code: true
+      is_peft: false
 
-image:
-  python_packages:
-    - "torch"
-    - "transformers"
-    - "accelerate"
-    - "jupyter"
-    - "jupyter_client"
-    - "pandas"
-    - "matplotlib"
-    - "numpy"
-    - "seaborn"
+# Stage 2: Execution (Interface)
+execution:
+  type: "notebook"
+  obfuscate: false  # Show model name since this is introspection task
+  skills:
+    - gpu-environment
+    - research-methodology
+    - extract-activations
+    - steering-hook
+
+# Stage 3: Harness (Orchestration)
+harness:
+  type: "single_agent"

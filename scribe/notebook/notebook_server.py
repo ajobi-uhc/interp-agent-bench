@@ -536,8 +536,8 @@ class ScribeServerApp(ServerApp):
                 try:
                     # Use async get_iopub_msg
                     msg = await client._async_get_iopub_msg(
-                        timeout=300
-                    )  # 5 minute timeout
+                        timeout=1200
+                    )  # 20 minute timeout
 
                     if msg["parent_header"].get("msg_id") != msg_id:
                         continue

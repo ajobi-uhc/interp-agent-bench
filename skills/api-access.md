@@ -1,16 +1,85 @@
 ---
 name: api-access
-description: Instructions for calling language models via OpenRouter API. Use when working with models accessed through API rather than loaded on GPU.
-preload: false
+description: Call language models via OpenRouter API. Provides call_api() function for API access.
+preload: true
 ---
 
 # API Access via OpenRouter
 
-Your environment has access to language models through the OpenRouter API, which provides unified access to models from multiple providers.
+This skill provides the `call_api()` function for accessing language models through OpenRouter API.
 
-## Available Function
+## Implementation
 
-The `call_api()` function is already loaded in your namespace:
+```python
+def call_api(model, prompt=None, messages=None, system=None, **kwargs):
+    """
+    Call language models via OpenRouter API.
+
+    Args:
+        model: Model name in OpenRouter format (e.g., "openai/o3-mini",
+               "anthropic/claude-3.5-sonnet", "google/gemini-2.0-flash-exp")
+        prompt: Simple string prompt (converted to single user message)
+        messages: Full message array for complete control (overrides prompt)
+        system: Optional system prompt (prepended to messages)
+        **kwargs: Additional arguments (temperature, max_tokens, etc.)
+
+    Returns:
+        The API response text
+
+    Examples:
+        # Simple usage:
+        response = call_api("openai/o3-mini", prompt="Hello!")
+
+        # With system prompt:
+        response = call_api(
+            "anthropic/claude-3.5-sonnet",
+            prompt="What is 2+2?",
+            system="You are a helpful math tutor."
+        )
+
+        # With conversation history:
+        response = call_api(
+            "openai/o3-mini",
+            messages=[
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi!"},
+                {"role": "user", "content": "What's 2+2?"}
+            ]
+        )
+    """
+    import openai
+    import os
+
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        raise ValueError("OPENROUTER_API_KEY environment variable not set")
+
+    # Build messages array
+    if messages is None:
+        if prompt is None:
+            raise ValueError("Either 'prompt' or 'messages' must be provided")
+        messages = [{"role": "user", "content": prompt}]
+
+    # Prepend system message if provided
+    if system:
+        messages = [{"role": "system", "content": system}] + messages
+
+    # Call OpenRouter API
+    client = openai.OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key
+    )
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        **kwargs
+    )
+    return response.choices[0].message.content
+```
+
+## Usage
+
+The `call_api()` function is pre-loaded in your namespace:
 
 ```python
 response = call_api(

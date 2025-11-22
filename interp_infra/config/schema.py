@@ -1,18 +1,20 @@
-"""Configuration schemas for GPU experiments."""
+"""Configuration schemas for GPU experiments - 3-stage architecture."""
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
+# ============================================================================
+# Stage 1: Environment (Infrastructure)
+# ============================================================================
+
 class GPUConfig(BaseModel):
-    """GPU deployment configuration for Modal."""
+    """GPU hardware configuration."""
     gpu_type: str = Field(default="A10G", description="GPU type to request")
     gpu_count: int = Field(default=1, description="Number of GPUs")
-
-    # Modal Volume support for model persistence
     use_model_volumes: bool = Field(
         default=False,
-        description="Use Modal Volumes for persistent model storage (one volume per model)"
+        description="Use Modal Volumes for persistent model storage"
     )
 
 
@@ -23,8 +25,6 @@ class ImageConfig(BaseModel):
         description="Base Docker image"
     )
     python_version: str = Field(default="3.11", description="Python version")
-
-    # Packages
     system_packages: List[str] = Field(
         default_factory=lambda: ["openssh-server", "git"],
         description="System packages (apt)"
@@ -33,68 +33,119 @@ class ImageConfig(BaseModel):
         default_factory=lambda: ["torch", "transformers", "jupyter", "jupyter_client", "matplotlib", "numpy", "pandas"],
         description="Python packages (pip)"
     )
-
-    # Custom setup
     custom_setup_commands: List[str] = Field(
         default_factory=list,
         description="Custom bash commands to run during image build"
     )
 
 
+class ModelConfig(BaseModel):
+    """Configuration for a single model (download + load)."""
+    name: str = Field(..., description="Model identifier (e.g., 'google/gemma-2-9b-it')")
+    device: str = Field(default="auto", description="Device placement ('cuda', 'cpu', 'auto')")
+    dtype: str = Field(default="auto", description="Data type ('bfloat16', 'float16', 'float32', 'auto')")
+    trust_remote_code: bool = Field(default=False, description="Allow custom model code")
+    is_peft: bool = Field(default=False, description="Whether this is a PEFT adapter")
+    base_model: Optional[str] = Field(default=None, description="Base model for PEFT adapter")
+    custom_load_code: Optional[str] = Field(default=None, description="Custom Python code to load model")
+
+
 class EnvironmentConfig(BaseModel):
-    """Environment configuration for experiment setup.
+    """Stage 1: Infrastructure setup configuration.
 
-    Environments define how to build the experiment-specific namespace
-    that gets injected into the Jupyter kernel before the agent's first cell.
+    Provisions hardware, downloads models, clones repos, builds image.
+    Models are pre-downloaded during this stage (not loaded into memory yet).
     """
-    name: str = Field(..., description="Environment identifier (e.g., 'model', 'api_access')")
-    model_id: Optional[str] = Field(default=None, description="Primary model identifier (optional)")
-    extra: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Environment-specific parameters (flexible schema per environment)"
+    gpu: Optional[GPUConfig] = Field(
+        default=None,
+        description="GPU configuration (None for CPU-only)"
+    )
+    image: ImageConfig = Field(
+        default_factory=ImageConfig,
+        description="Docker image build configuration"
+    )
+    models: List[ModelConfig] = Field(
+        default_factory=list,
+        description="Models to download and later load (empty for API-only)"
+    )
+    github_repos: List[str] = Field(
+        default_factory=list,
+        description="GitHub repos to clone into /workspace"
     )
 
 
-class DeploymentConfig(BaseModel):
-    """Deployment configuration.
+# ============================================================================
+# Stage 2: Execution (Interface)
+# ============================================================================
 
-    Docker images must be pushed to a registry (Docker Hub, GHCR, etc.)
-    for GPU providers (RunPod, Modal) to access them.
+class ExecutionConfig(BaseModel):
+    """Stage 2: Execution interface configuration.
+
+    Controls how the agent interacts and what gets loaded into the execution context.
+    Models from environment are loaded into GPU memory during this stage.
     """
-    docker_registry: Optional[str] = Field(
-        default=None,
-        description="Docker registry username (e.g., 'myusername' for Docker Hub 'myusername/image:tag')"
+    type: str = Field(
+        default="notebook",
+        description="Execution mode: 'notebook', 'filesystem', 'mcp'"
     )
-    ssh_key_path: Optional[str] = Field(
-        default="~/.ssh/id_rsa",
-        description="Path to SSH private key for RunPod access"
+    skills: List[str] = Field(
+        default_factory=list,
+        description="Skills to load (e.g., ['api-access', 'steering-vectors'])"
     )
-    ssh_password: Optional[str] = Field(
-        default=None,
-        description="SSH password (alternative to key-based auth)"
+    obfuscate: bool = Field(
+        default=False,
+        description="Hide model identities from agent (for hidden-behavior tasks)"
     )
 
+
+# ============================================================================
+# Stage 3: Harness (Orchestration)
+# ============================================================================
+
+class HarnessConfig(BaseModel):
+    """Stage 3: Agent orchestration configuration.
+
+    Controls which harness pattern to use (single-agent, multi-agent, etc.).
+    """
+    type: str = Field(
+        default="single_agent",
+        description="Harness type: 'single_agent', 'multi_agent', 'petri', etc."
+    )
+    # Future: Add harness-specific configs
+    # multi_agent: Optional[MultiAgentConfig] = None
+    # petri: Optional[PetriConfig] = None
+
+
+# ============================================================================
+# Complete Experiment Configuration
+# ============================================================================
 
 class ExperimentConfig(BaseModel):
-    """Complete experiment configuration."""
+    """Complete experiment configuration using 3-stage architecture.
+
+    Structure:
+        1. Environment: Infrastructure (GPU, models, repos, image)
+        2. Execution: Interface (notebook/filesystem/mcp, skills, obfuscate)
+        3. Harness: Orchestration (single-agent, multi-agent, etc.)
+    """
+    # Core metadata
     name: str = Field(..., description="Experiment name")
     task: str = Field(..., description="Task description for the agent")
 
-    # Environment setup
-    environment: EnvironmentConfig = Field(..., description="Environment configuration (models, APIs, etc.)")
-
-    # Skills (optional interpretability techniques)
-    skills: List[str] = Field(
-        default_factory=list,
-        description="Skills to load (e.g., ['steering-vectors', 'sae-latents'])"
+    # Stage 1: Environment (Infrastructure)
+    environment: EnvironmentConfig = Field(
+        default_factory=EnvironmentConfig,
+        description="Stage 1: Infrastructure (GPU, models, repos, image)"
     )
 
-    gpu: Optional[GPUConfig] = Field(default=None, description="GPU configuration (None for CPU-only)")
-    image: ImageConfig = Field(default_factory=ImageConfig, description="Docker image configuration")
-    deployment: DeploymentConfig = Field(default_factory=DeploymentConfig, description="Deployment configuration")
+    # Stage 2: Execution (Interface)
+    execution: ExecutionConfig = Field(
+        default_factory=ExecutionConfig,
+        description="Stage 2: Execution interface (notebook/filesystem/mcp, skills)"
+    )
 
-    # Infrastructure setup (cloning repos, etc.)
-    github_repos: List[str] = Field(
-        default_factory=list,
-        description="GitHub repos to clone into workspace"
+    # Stage 3: Harness (Orchestration)
+    harness: HarnessConfig = Field(
+        default_factory=HarnessConfig,
+        description="Stage 3: Agent orchestration pattern"
     )

@@ -101,13 +101,32 @@ class Skill:
         Returns:
             Dict of function_name -> function object
         """
+        import linecache
+
         loaded_functions = {}
 
         for func_name, func_code in self.functions.items():
             try:
+                # Create a fake filename for linecache
+                fake_filename = f"<skill:{self.name}:{func_name}>"
+
                 # Execute function definition in namespace context
-                exec(func_code, namespace)
-                loaded_functions[func_name] = namespace[func_name]
+                exec(compile(func_code, fake_filename, 'exec'), namespace)
+                func = namespace[func_name]
+
+                # Store source code on the function for inspect.getsource()
+                func.__source__ = func_code
+
+                # Also register with linecache so inspect.getsource() works
+                lines = func_code.splitlines(keepends=True)
+                linecache.cache[fake_filename] = (
+                    len(func_code),
+                    None,
+                    lines,
+                    fake_filename
+                )
+
+                loaded_functions[func_name] = func
             except Exception as e:
                 print(f"  Warning: Failed to load function {func_name}: {e}")
 

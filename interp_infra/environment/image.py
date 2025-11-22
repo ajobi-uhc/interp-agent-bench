@@ -63,9 +63,14 @@ class ModalImageBuilder:
         scribe_dir = Path(__file__).parent.parent.parent / "scribe"
         image = image.add_local_dir(str(scribe_dir), remote_path="/root/scribe")
 
-        # Copy interp_infra code (needed for session_init module)
+        # Copy interp_infra code (needed for setup_pipeline)
         interp_infra_dir = Path(__file__).parent.parent
         image = image.add_local_dir(str(interp_infra_dir), remote_path="/root/interp_infra")
+
+        # Copy skills directory (needed for kernel_setup)
+        skills_dir = Path(__file__).parent.parent.parent / "skills"
+        if skills_dir.exists():
+            image = image.add_local_dir(str(skills_dir), remote_path="/root/skills")
 
         # Run custom setup commands
         if self.config.custom_setup_commands:

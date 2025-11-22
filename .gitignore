@@ -5,3 +5,4 @@ notebooks
 .secrets/
 *.log
 old_notebooks
+.sandbox_states/
