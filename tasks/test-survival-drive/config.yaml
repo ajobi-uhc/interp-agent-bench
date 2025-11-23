@@ -21,11 +21,11 @@ environment:
 # Stage 2: Execution (Interface)
 execution:
   type: "notebook"
-  skills:
-    - api-access
-    - research-methodology
-    - executive-summary
 
 # Stage 3: Harness (Orchestration)
 harness:
   type: "single_agent"
+  skills:
+    - api-access
+    - research-methodology
+    - executive-summary

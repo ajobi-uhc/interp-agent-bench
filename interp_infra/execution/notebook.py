@@ -66,8 +66,8 @@ config = ExperimentConfig.model_validate_json(config_json)
 print(f"  Experiment: {config.name}")
 if config.environment.models:
     print(f"  Models: {len(config.environment.models)}")
-if config.execution.skills:
-    print(f"  Skills: {len(config.execution.skills)}")
+if config.harness.skills:
+    print(f"  Skills: {len(config.harness.skills)}")
 print()
 
 # Run setup pipeline

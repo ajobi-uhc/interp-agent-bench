@@ -124,15 +124,21 @@ def build_system_prompt(skills: list = None) -> str:
         from pathlib import Path
         from skills.loader import Skill
 
+        # Skills are at repo root, not in harness folder
+        skills_dir = Path(__file__).parent.parent.parent / "skills"
+
         for skill_name in skills:
             try:
-                skill_file = Path(__file__).parent / "skills" / f"{skill_name}.md"
+                skill_file = skills_dir / f"{skill_name}.md"
                 if skill_file.exists():
                     skill = Skill(skill_file)
                     parts.append("\n\n")
                     parts.append(f"### Skill: {skill.name}\n")
                     parts.append(f"**Description**: {skill.description}\n")
-                    parts.append(skill.get_system_prompt(include_source=False))
+                    # If functions are pre-loaded, just list them
+                    # Otherwise (preload=false), include full instructions
+                    include_source = not skill.preload
+                    parts.append(skill.get_system_prompt(include_source=include_source))
             except Exception as e:
                 print(f"Warning: Could not load skill {skill_name}: {e}")
 

@@ -252,7 +252,7 @@ from .prompts import build_agent_prompts
 # Use built-in prompt builder (adds skills, session info, etc.)
 prompts = build_agent_prompts(
     task=config.task,
-    skills=config.execution.skills,
+    skills=config.harness.skills,
     session_id=deployment.session_id,
     agent_provider="claude",
 )

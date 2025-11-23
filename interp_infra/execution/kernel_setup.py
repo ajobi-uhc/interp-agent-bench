@@ -100,7 +100,7 @@ class SetupPipeline:
             # Phase 3: Load skills (add technique functions)
             print("\n[Phase 2/3] Skills Loading")
             print("-" * 60)
-            skill_names = self.config.execution.skills
+            skill_names = self.config.harness.skills
             if skill_names:
                 print(f"Loading {len(skill_names)} skill(s): {', '.join(skill_names)}")
                 try:

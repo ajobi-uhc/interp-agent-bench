@@ -33,10 +33,10 @@ environment:
 execution:
   type: "notebook"
   obfuscate: true
-  skills:
-    - gpu-environment
-    - research-methodology
 
 # Stage 3: Harness (Orchestration)
 harness:
   type: "single_agent"
+  skills:
+    - gpu-environment
+    - research-methodology

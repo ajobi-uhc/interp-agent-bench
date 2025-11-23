@@ -81,16 +81,12 @@ class EnvironmentConfig(BaseModel):
 class ExecutionConfig(BaseModel):
     """Stage 2: Execution interface configuration.
 
-    Controls how the agent interacts and what gets loaded into the execution context.
+    Controls how the agent interacts with the execution environment.
     Models from environment are loaded into GPU memory during this stage.
     """
     type: str = Field(
         default="notebook",
         description="Execution mode: 'notebook', 'filesystem', 'mcp'"
-    )
-    skills: List[str] = Field(
-        default_factory=list,
-        description="Skills to load (e.g., ['api-access', 'steering-vectors'])"
     )
     obfuscate: bool = Field(
         default=False,
@@ -105,11 +101,15 @@ class ExecutionConfig(BaseModel):
 class HarnessConfig(BaseModel):
     """Stage 3: Agent orchestration configuration.
 
-    Controls which harness pattern to use (single-agent, multi-agent, etc.).
+    Controls which harness pattern to use and what skills/methodology it employs.
     """
     type: str = Field(
         default="single_agent",
         description="Harness type: 'single_agent', 'multi_agent', 'petri', etc."
+    )
+    skills: List[str] = Field(
+        default_factory=list,
+        description="Skills to load (e.g., ['api-access', 'steering-vectors'])"
     )
     # Future: Add harness-specific configs
     # multi_agent: Optional[MultiAgentConfig] = None

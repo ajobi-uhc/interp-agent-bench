@@ -53,7 +53,7 @@ class SingleAgentHarness(Harness):
             task=self.config.task,
             agent_provider="claude",  # TODO: Make configurable
             session_id=self.deployment.session_id,
-            skills=self.config.execution.skills,
+            skills=self.config.harness.skills,
         )
 
         # Save prompts to workspace

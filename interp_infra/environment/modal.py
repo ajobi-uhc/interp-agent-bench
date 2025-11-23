@@ -287,8 +287,8 @@ else:
             print(f"  Mode: CPU-only")
         if experiment_config.environment.models:
             print(f"  Models: {len(experiment_config.environment.models)} to load")
-        if experiment_config.execution.skills:
-            print(f"  Skills: {', '.join(experiment_config.execution.skills)}")
+        if experiment_config.harness.skills:
+            print(f"  Skills: {', '.join(experiment_config.harness.skills)}")
 
         # Create or lookup an App for the sandbox
         app = modal.App.lookup(name, create_if_missing=True)
@@ -375,7 +375,7 @@ app.start()
             pass
 
         # Pass API keys if using api-access skill (typically for API-only experiments)
-        if "api-access" in experiment_config.execution.skills:
+        if "api-access" in experiment_config.harness.skills:
             import os
             api_keys = {}
 
