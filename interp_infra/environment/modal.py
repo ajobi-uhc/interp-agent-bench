@@ -374,6 +374,18 @@ app.start()
             # HF secret not configured, skip it
             pass
 
+        # Add Modal auth for nested sandboxes (needed for Inspect Modal sandbox provider)
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()  # Load .env file to get Modal credentials
+
+        if os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"):
+            secrets.append(modal.Secret.from_dict({
+                "MODAL_TOKEN_ID": os.environ["MODAL_TOKEN_ID"],
+                "MODAL_TOKEN_SECRET": os.environ["MODAL_TOKEN_SECRET"],
+            }))
+            print("  Passing Modal credentials for nested sandbox support")
+
         # Pass API keys if using api-access skill (typically for API-only experiments)
         if "api-access" in experiment_config.harness.skills:
             import os
@@ -399,6 +411,18 @@ app.start()
                 print("  Warning: No API keys found in environment")
                 print("  Set OPENROUTER_API_KEY or other API keys in your .env file")
 
+        # Pass config for nested Modal sandboxes (Inspect integration)
+        import json
+        sandbox_env = {}
+        if experiment_config.environment.image.system_packages:
+            sandbox_env["MODAL_SANDBOX_SYSTEM_PACKAGES"] = json.dumps(
+                experiment_config.environment.image.system_packages
+            )
+        if experiment_config.environment.github_repos:
+            sandbox_env["MODAL_SANDBOX_GITHUB_REPOS"] = json.dumps(
+                experiment_config.environment.github_repos
+            )
+
         sandbox_kwargs = {
             "image": image,
             "gpu": gpu,
@@ -406,6 +430,7 @@ app.start()
             "app": app,
             "encrypted_ports": [jupyter_port],  # Public HTTPS tunnel to Jupyter
             "secrets": secrets,
+            "env": sandbox_env,
         }
 
         if volumes_dict:

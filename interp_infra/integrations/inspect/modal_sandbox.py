@@ -31,7 +31,11 @@ class ModalSandboxEnvironment(SandboxEnvironment):
             config: Optional config (unused for now)
             **kwargs: Additional arguments
         """
-        super().__init__(task_name, config, **kwargs)
+        super().__init__()  # ABC base class doesn't take parameters
+
+        # Store task info
+        self.task_name = task_name
+        self.config = config
 
         # Create Modal app for this task
         self._app = modal.App.lookup(
@@ -39,14 +43,21 @@ class ModalSandboxEnvironment(SandboxEnvironment):
             create_if_missing=True
         )
 
-        # Base image for sandboxes (can be customized)
-        self._image = modal.Image.debian_slim().pip_install(
-            "python3",
-        ).apt_install(
-            "bash",
-            "coreutils",
-            "findutils",
-        )
+        # Build image with same packages as parent
+        # (Inspect will copy files from parent, so no need to clone repos)
+        import os
+        import json
+
+        image = modal.Image.debian_slim()
+
+        # Install system packages + sudo (needed by Inspect setup scripts)
+        packages = ["sudo"]
+        packages_json = os.getenv("MODAL_SANDBOX_SYSTEM_PACKAGES")
+        if packages_json:
+            packages.extend(json.loads(packages_json))
+
+        image = image.apt_install(*packages)
+        self._image = image
 
         # Sandbox instance (created on first use)
         self._sandbox: modal.Sandbox | None = None
@@ -147,14 +158,12 @@ class ModalSandboxEnvironment(SandboxEnvironment):
         """
         sandbox = await self._ensure_sandbox()
 
-        # Resolve path
-        if not file.startswith('/'):
-            file = f"/sandbox/{file}"
-
-        # Ensure parent directory exists
-        parent_dir = str(Path(file).parent)
-        mkdir_process = sandbox.exec("mkdir", "-p", parent_dir)
-        mkdir_process.wait()
+        # Use path as-is - relative paths go to sandbox's working directory
+        # Ensure parent directory exists if path has directories
+        if '/' in file:
+            parent_dir = str(Path(file).parent)
+            mkdir_process = sandbox.exec("mkdir", "-p", parent_dir)
+            mkdir_process.wait()
 
         # Write file
         if isinstance(contents, str):
@@ -195,10 +204,7 @@ with open('{file}', 'wb') as f:
         """
         sandbox = await self._ensure_sandbox()
 
-        # Resolve path
-        if not file.startswith('/'):
-            file = f"/sandbox/{file}"
-
+        # Use path as-is - relative paths use sandbox's working directory
         # Read file using base64 encoding for safe transport
         read_script = f"""
 import base64
