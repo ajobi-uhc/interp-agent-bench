@@ -40,9 +40,16 @@ class ModalImageBuilder:
         # Start with debian_slim and Python version
         image = modal.Image.debian_slim(python_version=python_version)
 
+        # ===== ALL BUILD STEPS (must come before add_local_*) =====
+
         # Install system packages
         if self.config.system_packages:
             image = image.apt_install(*self.config.system_packages)
+
+        # Add Docker support if enabled (must be early to install packages and create script)
+        if self.config.enable_docker:
+            image = self._add_docker_packages(image)
+            image = self._add_docker_script(image)
 
         # Install Python packages
         if self.config.python_packages:
@@ -58,6 +65,12 @@ class ModalImageBuilder:
             "requests",  # Required by scribe._notebook_server_utils
         )
 
+        # Run custom setup commands
+        if self.config.custom_setup_commands:
+            image = image.run_commands(*self.config.custom_setup_commands)
+
+        # ===== ALL ADD_LOCAL_* CALLS (must come after build steps) =====
+
         # Copy Scribe notebook server code into the image
         from pathlib import Path
         scribe_dir = Path(__file__).parent.parent.parent / "scribe"
@@ -72,8 +85,89 @@ class ModalImageBuilder:
         if skills_dir.exists():
             image = image.add_local_dir(str(skills_dir), remote_path="/root/skills")
 
-        # Run custom setup commands
-        if self.config.custom_setup_commands:
-            image = image.run_commands(*self.config.custom_setup_commands)
+        return image
+
+    def _add_docker_packages(self, image: modal.Image) -> modal.Image:
+        """
+        Install Docker packages and dependencies (build steps only).
+
+        This must be called before any add_local_* commands.
+        Based on Modal's Docker-in-Sandbox documentation.
+        """
+        # Set builder version for Docker support
+        import os
+        os.environ["MODAL_IMAGE_BUILDER_VERSION"] = "2025.06"
+
+        # Install Docker and dependencies
+        image = (
+            image
+            .env({"DEBIAN_FRONTEND": "noninteractive"})
+            .apt_install(["wget", "ca-certificates", "curl", "net-tools", "iproute2"])
+            .run_commands([
+                "install -m 0755 -d /etc/apt/keyrings",
+                "curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc",
+                "chmod a+r /etc/apt/keyrings/docker.asc",
+                'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo \\"$VERSION_CODENAME\\") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null',
+            ])
+            .apt_install([
+                "docker-ce",
+                "docker-ce-cli",
+                "containerd.io",
+                "docker-buildx-plugin",
+                "docker-compose-plugin"
+            ])
+            # Install modern runc for reliable networking
+            .run_commands([
+                "rm $(which runc)",
+                "wget https://github.com/opencontainers/runc/releases/download/v1.3.0/runc.amd64",
+                "chmod +x runc.amd64",
+                "mv runc.amd64 /usr/local/bin/runc",
+            ])
+            # Use iptables-legacy for gVisor compatibility
+            .run_commands([
+                "update-alternatives --set iptables /usr/sbin/iptables-legacy",
+                "update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy",
+            ])
+        )
+
+        return image
+
+    def _add_docker_script(self, image: modal.Image) -> modal.Image:
+        """
+        Add Docker daemon startup script using copy=True.
+        Must be called BEFORE add_local_dir calls (those create mount layers).
+        """
+        script = """#!/bin/bash
+set -xe -o pipefail
+
+dev=$(ip route show default | awk '/default/ {print $5}')
+if [ -z "$dev" ]; then
+    echo "Error: No default device found."
+    exit 1
+fi
+addr=$(ip addr show dev "$dev" | grep -w inet | awk '{print $2}' | cut -d/ -f1)
+if [ -z "$addr" ]; then
+    echo "Error: No IP address found for device $dev."
+    exit 1
+fi
+
+echo 1 > /proc/sys/net/ipv4/ip_forward
+iptables-legacy -t nat -A POSTROUTING -o "$dev" -j SNAT --to-source "$addr" -p tcp
+iptables-legacy -t nat -A POSTROUTING -o "$dev" -j SNAT --to-source "$addr" -p udp
+
+update-alternatives --set iptables /usr/sbin/iptables-legacy
+update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+
+exec /usr/bin/dockerd --iptables=false --ip6tables=false --dns 8.8.8.8 --dns 8.8.4.4 -D
+"""
+        # Write to temp file and add with copy=True
+        import tempfile
+        import os
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.sh') as f:
+            f.write(script)
+            f.flush()
+            os.chmod(f.name, 0o755)
+            # copy=True allows build steps after this
+            image = image.add_local_file(f.name, "/start-dockerd.sh", copy=True)
 
         return image

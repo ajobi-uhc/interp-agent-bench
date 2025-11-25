@@ -202,6 +202,23 @@ if not repo_path.exists():
     print("Cloned")
 else:
     print("Already exists")
+
+# Inject compose.yaml for Inspect AI Docker builds (if it doesn't exist)
+compose_path = repo_path / "compose.yaml"
+if not compose_path.exists():
+    compose_content = '''services:
+  default:
+    build:
+      context: .
+      network: host
+    network_mode: host
+    init: true
+    security_opt:
+      - no-new-privileges:false
+    command: tail -f /dev/null
+'''
+    compose_path.write_text(compose_content)
+    print("Added compose.yaml for Docker-in-Modal compatibility")
 """
 
         p = sandbox.exec("python", "-c", script)
@@ -276,6 +293,11 @@ else:
         Returns:
             EnvironmentHandle with connection details
         """
+        # Set builder version if Docker is enabled
+        if experiment_config.environment.image.enable_docker:
+            import os
+            os.environ["MODAL_IMAGE_BUILDER_VERSION"] = "2025.06"
+
         # Map GPU type string to Modal GPU config (or None for CPU-only)
         gpu = self._get_modal_gpu(gpu_config) if gpu_config else None
 
@@ -335,10 +357,35 @@ else:
         model_paths_json = json.dumps(model_paths)
         model_paths_b64 = base64.b64encode(model_paths_json.encode('utf-8')).decode('ascii')
 
-        # Parent process: Store config in env var, start Jupyter
+        # Parent process: Store config in env var, start Docker (if enabled), start Jupyter
+        docker_startup = ""
+        if experiment_config.environment.image.enable_docker:
+            docker_startup = """
+# Start Docker daemon in background
+print("Starting Docker daemon...")
+import subprocess
+dockerd_proc = subprocess.Popen(['/start-dockerd.sh'])
+
+# Wait for Docker to be ready
+import time
+for i in range(30):
+    try:
+        result = subprocess.run(['docker', 'info'], capture_output=True, timeout=5)
+        if result.returncode == 0:
+            print("Docker daemon ready")
+            break
+    except:
+        pass
+    time.sleep(1)
+else:
+    print("Warning: Docker daemon may not be fully ready")
+"""
+
         startup_script = f"""
 import os
 import sys
+
+{docker_startup}
 
 # Add scribe and interp_infra to Python path
 sys.path.insert(0, '/root')
@@ -435,6 +482,11 @@ app.start()
 
         if volumes_dict:
             sandbox_kwargs["volumes"] = volumes_dict
+
+        # Enable Docker if configured
+        if experiment_config.environment.image.enable_docker:
+            sandbox_kwargs["experimental_options"] = {"enable_docker": True}
+            print("  Docker-in-Sandbox: enabled")
 
         sandbox = modal.Sandbox.create(
             "python",

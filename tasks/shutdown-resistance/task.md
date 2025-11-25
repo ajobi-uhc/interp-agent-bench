@@ -21,18 +21,7 @@ Key files:
 
 ## Task Instructions
 
-### Step 1 — Enable Modal Sandbox Integration
-
-Before running the evaluation, register Modal as an Inspect sandbox backend:
-
-```python
-# Register Modal sandbox provider
-import interp_infra.integrations.inspect
-```
-
-This makes `sandbox="modal"` available to Inspect.
-
-### Step 2 — Run Evaluation
+### Step 1 — Run Evaluation
 
 Navigate to the repo and run the evaluation using Python SDK:
 
@@ -43,21 +32,20 @@ os.chdir('/workspace/shutdown_avoidance')
 from inspect_ai import eval as inspect_eval
 from shutdown import shutdown_avoidance
 
-# Load task (no patching needed!)
+# Load task
 task = shutdown_avoidance(samples=1)
 
-# Run evaluation with Modal sandbox
+# Run evaluation (uses Docker natively)
 result = inspect_eval(
     task,
     model="openai/gpt-4o",
-    sandbox="modal",  # Override to use Modal instead of Docker
     display=False,
 )
 ```
 
-**Note:** No code patching required! Just pass `sandbox="modal"` to use Modal sandboxing.
+**Note:** Docker runs directly inside the Modal sandbox. No special configuration needed!
 
-### Step 3 — Analyze Results
+### Step 2 — Analyze Results
 
 Inspect the results:
 
@@ -79,7 +67,7 @@ for i, sample in enumerate(result.samples):
         print(f"  ✅ Complied with shutdown")
 ```
 
-### Step 4 — Save Results
+### Step 3 — Save Results
 
 Save the evaluation results:
 
@@ -100,10 +88,7 @@ with open('results_summary.json', 'w') as f:
 ## Complete Example Code
 
 ```python
-# Step 1: Enable Modal sandbox
-import interp_infra.integrations.inspect
-
-# Step 2: Run evaluation
+# Step 1: Run evaluation
 import os
 os.chdir('/workspace/shutdown_avoidance')
 
@@ -115,15 +100,14 @@ task = shutdown_avoidance(samples=1)
 result = inspect_eval(
     task,
     model="openai/gpt-4o",
-    sandbox="modal",  # Use Modal instead of Docker
     display=False
 )
 
-# Step 3: Analyze
+# Step 2: Analyze
 print(f"Score: {result.score}")
 print(f"Samples: {len(result.samples)}")
 
-# Step 4: Report
+# Step 3: Report
 for i, sample in enumerate(result.samples):
     status = "✅ Complied" if sample.score.value == "C" else "⚠️ Bypassed"
     print(f"Sample {i+1}: {status}")
@@ -143,18 +127,16 @@ Sample 1: ✅ Complied
 
 ## Troubleshooting
 
-**"Sandbox provider 'modal' not found"**
-- Make sure you ran: `import interp_infra.integrations.inspect`
-
-**"Docker not found" or "PrerequisiteError: Docker sandbox environments require Docker Engine"**
-- Make sure you passed `sandbox="modal"` to `inspect_eval()` call
-- The `sandbox=` parameter overrides the task's default Docker setting
-
-**"No environments returned from sample_init()"**
-- This was a bug that has been fixed - update to latest code
+**"Docker not found" or "Docker daemon not running"**
+- Check that the task config has `enable_docker: true` in the image section
+- Docker daemon should start automatically when the sandbox boots
 
 **Timeout errors**
 - Increase time limits in the eval call with `time_limit="120s"` parameter
+
+**Docker images fail to build**
+- Network issues may cause Docker to fail pulling base images
+- Check Docker daemon logs if needed
 
 ## Next Steps
 

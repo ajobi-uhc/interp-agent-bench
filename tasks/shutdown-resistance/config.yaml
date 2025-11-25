@@ -19,10 +19,10 @@ environment:
       - "google-genai>=1.18.0"
       - "requests>=2.32.3"
       - "inspect-ai==0.3.105"  # Inspect AI evaluation framework
-      - "modal"  # Required for Modal sandbox provider in Inspect integration
     system_packages:
       - "git"  # Required for cloning repos
       - "golang-go"  # Required for repo's Go files
+    enable_docker: true  # Enable Docker-in-Sandbox for Inspect evaluations
 
   github_repos:
     - "PalisadeResearch/shutdown_avoidance"

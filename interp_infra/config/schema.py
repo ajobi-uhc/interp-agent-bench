@@ -37,6 +37,10 @@ class ImageConfig(BaseModel):
         default_factory=list,
         description="Custom bash commands to run during image build"
     )
+    enable_docker: bool = Field(
+        default=False,
+        description="Enable Docker-in-Sandbox support (for tasks that need isolated containers)"
+    )
 
 
 class ModelConfig(BaseModel):
