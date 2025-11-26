@@ -53,6 +53,7 @@ class SingleAgentHarness(Harness):
             task=self.config.task,
             agent_provider="claude",  # TODO: Make configurable
             session_id=self.deployment.session_id,
+            jupyter_url=self.deployment.jupyter_url,
             skills=self.config.harness.skills,
         )
 

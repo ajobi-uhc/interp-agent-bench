@@ -5,11 +5,10 @@ for code execution isolation.
 """
 
 import base64
-import tempfile
 from pathlib import Path
-from typing import Literal
 
 import modal
+import yaml
 from inspect_ai.util import ExecResult, sandboxenv, SandboxEnvironment
 
 
@@ -28,14 +27,20 @@ class ModalSandboxEnvironment(SandboxEnvironment):
 
         Args:
             task_name: Name of the task
-            config: Optional config (unused for now)
+            config: Path to Dockerfile, compose.yaml, or directory containing Dockerfile
             **kwargs: Additional arguments
         """
-        super().__init__()  # ABC base class doesn't take parameters
+        super().__init__()
 
-        # Store task info
         self.task_name = task_name
         self.config = config
+
+        # Find and build image from Dockerfile
+        dockerfile_path = self._find_dockerfile(config)
+        self._image = modal.Image.from_dockerfile(
+            str(dockerfile_path),
+            context_dir=str(dockerfile_path.parent)
+        )
 
         # Create Modal app for this task
         self._app = modal.App.lookup(
@@ -43,25 +48,107 @@ class ModalSandboxEnvironment(SandboxEnvironment):
             create_if_missing=True
         )
 
-        # Build image with same packages as parent
-        # (Inspect will copy files from parent, so no need to clone repos)
-        import os
-        import json
-
-        image = modal.Image.debian_slim()
-
-        # Install system packages + sudo (needed by Inspect setup scripts)
-        packages = ["sudo"]
-        packages_json = os.getenv("MODAL_SANDBOX_SYSTEM_PACKAGES")
-        if packages_json:
-            packages.extend(json.loads(packages_json))
-
-        image = image.apt_install(*packages)
-        self._image = image
-
         # Sandbox instance (created on first use)
         self._sandbox: modal.Sandbox | None = None
         self._sandbox_started = False
+
+    @staticmethod
+    def _find_dockerfile(config: str | None) -> Path:
+        """
+        Find Dockerfile from config path.
+
+        Args:
+            config: Path to Dockerfile, compose.yaml, or directory.
+                   If None, looks for Dockerfile in current working directory.
+
+        Returns:
+            Absolute path to Dockerfile
+
+        Raises:
+            ValueError: If config is invalid
+            FileNotFoundError: If Dockerfile cannot be found
+        """
+        if not config:
+            # Fallback: look for Dockerfile in current working directory
+            cwd = Path.cwd()
+            dockerfile = cwd / "Dockerfile"
+            if dockerfile.exists():
+                return dockerfile
+            raise FileNotFoundError(
+                f"No config provided and no Dockerfile found in current directory: {cwd}"
+            )
+
+        config_path = Path(config).resolve()
+
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config path does not exist: {config_path}")
+
+        # Case 1: compose.yaml - parse to find Dockerfile
+        if config_path.name in ("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"):
+            return ModalSandboxEnvironment._parse_compose_for_dockerfile(config_path)
+
+        # Case 2: Direct Dockerfile path
+        elif config_path.name == "Dockerfile" or config_path.name.startswith("Dockerfile."):
+            return config_path
+
+        # Case 3: Directory - look for Dockerfile inside
+        elif config_path.is_dir():
+            dockerfile = config_path / "Dockerfile"
+            if not dockerfile.exists():
+                raise FileNotFoundError(f"Dockerfile not found in directory: {config_path}")
+            return dockerfile
+
+        else:
+            raise ValueError(f"Invalid config: {config_path} (expected Dockerfile, compose.yaml, or directory)")
+
+    @staticmethod
+    def _parse_compose_for_dockerfile(compose_path: Path) -> Path:
+        """
+        Parse compose.yaml to find Dockerfile path.
+
+        Args:
+            compose_path: Path to compose.yaml file
+
+        Returns:
+            Absolute path to Dockerfile
+
+        Raises:
+            FileNotFoundError: If no Dockerfile found in compose config
+        """
+        with open(compose_path) as f:
+            compose = yaml.safe_load(f)
+
+        # Find the first service with a build context
+        services = compose.get("services", {})
+
+        for service_name, service_config in services.items():
+            build_config = service_config.get("build")
+
+            if not build_config:
+                continue
+
+            # Handle string format: build: ./path/to/context
+            if isinstance(build_config, str):
+                context_dir = compose_path.parent / build_config
+                dockerfile = context_dir / "Dockerfile"
+
+            # Handle dict format: build: { context: ./path, dockerfile: Dockerfile }
+            elif isinstance(build_config, dict):
+                context = build_config.get("context", ".")
+                dockerfile_name = build_config.get("dockerfile", "Dockerfile")
+                context_dir = compose_path.parent / context
+                dockerfile = context_dir / dockerfile_name
+
+            else:
+                continue
+
+            if dockerfile.exists():
+                return dockerfile.resolve()
+
+        raise FileNotFoundError(
+            f"No Dockerfile found in compose.yaml at {compose_path}. "
+            f"Ensure at least one service has a 'build' configuration."
+        )
 
     async def _ensure_sandbox(self) -> modal.Sandbox:
         """Create sandbox on first use."""
@@ -245,7 +332,7 @@ with open('{file}', 'rb') as f:
 
         Args:
             task_name: Name of task
-            config: Optional config
+            config: Path to Dockerfile, compose.yaml, or directory
             metadata: Sample metadata
 
         Returns:

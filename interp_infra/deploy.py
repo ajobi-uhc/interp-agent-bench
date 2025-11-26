@@ -92,11 +92,6 @@ def deploy_experiment(
     print(f"   Sandbox ID: {env_handle.sandbox_id}")
     print(f"   Jupyter URL: {env_handle.jupyter_url}")
 
-    if hasattr(exec_handle, 'session_id'):
-        print(f"   Session ID: {exec_handle.session_id}")
-        print(f"\n   💡 Agent should use: attach_to_session(session_id='{exec_handle.session_id}')")
-        print(f"      Models are already loaded and ready!")
-
     print("=" * 70)
 
     return Deployment(env_handle, exec_handle)

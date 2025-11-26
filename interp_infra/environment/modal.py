@@ -34,7 +34,8 @@ class ModalEnvironment:
         self,
         sandbox: modal.Sandbox,
         experiment_config: ExperimentConfig,
-        model_paths: Dict[str, str] = None
+        model_paths: Dict[str, str] = None,
+        volumes_dict: Dict[str, modal.Volume] = None
     ) -> None:
         """
         Pre-warm infrastructure by downloading models and cloning repos.
@@ -43,11 +44,14 @@ class ModalEnvironment:
             sandbox: Modal sandbox to run commands in
             experiment_config: Experiment configuration
             model_paths: Optional mapping of model_id -> volume mount path
+            volumes_dict: Optional mapping of mount_path -> Volume for committing changes
         """
         print("Preparing environment...")
 
         if model_paths is None:
             model_paths = {}
+        if volumes_dict is None:
+            volumes_dict = {}
 
         # 1. Download models (if specified)
         models = experiment_config.environment.models
@@ -112,6 +116,16 @@ class ModalEnvironment:
                     raise RuntimeError(error_msg) from e
             print(f"  Repos cloned")
 
+        # 3. Commit volumes if models were downloaded to them
+        if volumes_dict and model_paths:
+            print(f"  Committing volume changes...")
+            for mount_path, volume in volumes_dict.items():
+                try:
+                    volume.commit()
+                    print(f"    ✓ Committed {mount_path}")
+                except Exception as e:
+                    print(f"    Warning: Failed to commit volume at {mount_path}: {e}")
+
         print("Infrastructure ready\n")
 
     def _download_model_weights(
@@ -123,32 +137,53 @@ class ModalEnvironment:
         """
         Load model weights from volume or download to HF cache.
 
-        If volume_path is provided, checks that model exists in volume (read-only).
+        If volume_path is provided, checks if model exists in volume.
+        If not found, automatically downloads to volume.
         Otherwise, downloads to HF cache (ephemeral).
 
         Args:
             sandbox: Modal sandbox to run download in
             model_id: HuggingFace model identifier
-            volume_path: Optional volume mount path to check (read-only)
+            volume_path: Optional volume mount path to use for persistent storage
         """
         if volume_path:
-            # Volume mode: verify model exists (read-only, no downloads)
-            check_script = f"""
+            # Volume mode: check if model exists, download if missing
+            download_script = f"""
+import os
 from pathlib import Path
+from huggingface_hub import snapshot_download
+
 model_path = Path("{volume_path}")
+model_id = "{model_id}"
+token = os.environ.get("HF_TOKEN")
+
+# Check if model already exists
 if (model_path / "config.json").exists():
     print("Model found in volume")
 else:
-    raise FileNotFoundError(
-        f"Model not found in volume at {volume_path}. "
-        f"Pre-populate volume using: python scripts/download_model_to_volume.py --model-id {model_id}"
+    print(f"Model not found in volume, downloading {{model_id}} to {{model_path}}...")
+    model_path.mkdir(parents=True, exist_ok=True)
+
+    # Download to volume
+    snapshot_download(
+        model_id,
+        local_dir=str(model_path),
+        token=token,
+        resume_download=True,
     )
+    print("Download complete, model saved to volume")
 """
-            p = sandbox.exec("python", "-c", check_script)
+            p = sandbox.exec("python", "-c", download_script)
             for line in p.stdout:
                 line = line.rstrip()
-                if line:
+                if line and not line.startswith("Fetching"):
                     print(f"      {line}")
+
+            # Check for errors
+            p.wait()
+            if p.returncode != 0:
+                stderr_output = "".join(p.stderr)
+                raise RuntimeError(f"Failed to download model to volume: {stderr_output}")
         else:
             # No volume: download to ephemeral HF cache
             script = f"""
@@ -446,7 +481,7 @@ app.start()
         print(f"Sandbox created: {sandbox.object_id}")
 
         # Pre-download model weights (to volumes or HF cache)
-        self._infra_prewarm(sandbox, experiment_config, model_paths)
+        self._infra_prewarm(sandbox, experiment_config, model_paths, volumes_dict)
 
         print("Starting Jupyter...")
 

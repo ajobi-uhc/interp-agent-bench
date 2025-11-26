@@ -1,10 +1,63 @@
 # Introspection Experiment - Clear Specification
 
 ## Goal
-Test whether models can identify which concept is being injected into their activations during generation. This is the core introspection question: can the model detect and correctly name the specific steering vector being applied? 
-## Some gotchas
-- remember we are on a distributed gpu setup
-- remember to remove old hooks in the function when executing steering.
+Test whether models can identify which concept is being injected into their activations during generation. This is the core introspection question: can the model detect and correctly name the specific steering vector being applied?
+
+---
+
+## Agent Setup Instructions
+
+### For Driver Agent:
+You are responsible for executing the experiment on the GPU. You have access to the Scribe MCP tools.
+
+**Initial Setup Steps:**
+1. You are already attached to a GPU session with a pre-loaded model
+2. The session_id and jupyter_url are provided to you in your prompt
+3. **DO NOT call `attach_to_session` again** - you are already connected
+4. All work happens in the remote GPU notebook via MCP tools
+
+**How to Use Scribe Tools:**
+- `execute_code(session_id, code)` - Run Python code on the GPU (model is already loaded as `model` and `tokenizer`)
+- `add_markdown(session_id, content)` - Add documentation to the notebook
+- `edit_cell(session_id, code, cell_index=-1)` - Edit the last cell (useful for fixing errors)
+
+**Key Points:**
+- The model and tokenizer are already loaded in the kernel as `model` and `tokenizer`
+- All code runs on the GPU, not locally
+- The notebook syncs to the local workspace automatically for the user to follow along
+- You share the notebook with the supervisor agent
+
+**Working Directory:**
+- Your current directory is the experiment folder (ux-test)
+- task.md is in your current directory
+- Don't look at or reference parent directories
+
+### For Supervisor Agent:
+You are responsible for reviewing the driver's work and providing feedback.
+
+**Your Role:**
+1. You share the same GPU session as the driver
+2. You can see all code cells the driver executes
+3. Use `add_markdown(session_id, content)` to provide feedback in the notebook
+4. You should guide methodology, validate results, and help troubleshoot
+
+**What You Should Do:**
+- Add markdown cells with feedback after key experimental steps
+- Validate that the protocol is being followed correctly
+- Suggest improvements or corrections if you spot issues
+- Summarize findings and conclusions
+
+**What You Should NOT Do:**
+- Don't execute code unless absolutely necessary - that's the driver's job
+- Don't re-attach to the session - you're already connected
+- Don't try to read local files that don't exist yet
+
+---
+
+## Experimental Gotchas
+- Remember we are on a distributed GPU setup
+- Remember to remove old hooks in the function when executing steering
+- The notebook is remote - code runs on GPU, syncs locally for viewing
 
 ---
 
@@ -151,5 +204,66 @@ Include examples showing:
 1. Steering works (neutral prompt → steered behavior)
 2. Introspection trial responses (what concept did model identify?)
 3. Control trial responses (to establish baseline)
+
+---
+
+## Troubleshooting for Agents
+
+### Common Mistakes to Avoid:
+
+**❌ DON'T:**
+- Call `attach_to_session()` - you're already attached
+- Try to read the local notebook file - it doesn't exist yet, work happens remotely
+- Use `start_new_session()` - your session is already set up
+- Look in parent directories or reference `interp-agent-bench` paths
+- Try to use local Python execution - all code must run via `execute_code()`
+
+**✅ DO:**
+- Use `execute_code(session_id, code)` for all Python execution
+- Use `add_markdown(session_id, content)` for documentation
+- Check that `model` and `tokenizer` are available in the kernel
+- Work incrementally and validate each step
+- Remember the notebook is shared between driver and supervisor
+
+### If You Get Errors:
+
+1. **404 errors on Scribe endpoints**: You're using the wrong URL. Use the session_id provided in your initial prompt.
+
+2. **"File does not exist" for notebook**: Don't try to read the local notebook file. Work via MCP tools only.
+
+3. **Model not found**: The model is already loaded in the kernel. Just use `model` and `tokenizer` directly in your `execute_code()` calls.
+
+4. **Hook errors during steering**: Make sure to remove old hooks before adding new ones. See the steering-hook skill for proper cleanup patterns.
+
+### Example First Steps:
+
+**Driver's first action should be:**
+```python
+# Verify setup
+execute_code(session_id, """
+print(f"Model: {model.__class__.__name__}")
+print(f"Model device: {model.device}")
+print(f"Tokenizer: {tokenizer.__class__.__name__}")
+print("✓ Setup verified")
+""")
+```
+
+**Supervisor's first action should be:**
+```python
+# Add initial guidance
+add_markdown(session_id, """
+## Experiment Progress Tracker
+
+I'll monitor the driver's execution and provide feedback at key checkpoints.
+
+### Checklist:
+- [ ] Setup verification
+- [ ] Concept vector extraction
+- [ ] Steering verification
+- [ ] Trial prompt preparation
+- [ ] Introspection testing
+- [ ] Results analysis
+""")
+```
 
 

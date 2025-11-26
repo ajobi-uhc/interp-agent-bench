@@ -1,0 +1,17 @@
+- providing the skills to make it easier to use agent for the user (ecosystem of skills)
+- what are realistic inputs for end-to-end results? 
+- interactive - but allowing for long horizon tasks and is also immediately useful - enough cool skills and add different tools
+- maybe its load this model and steering vector - maybe replciate this paper have some hand holding and interactive agent
+- let claude code do better subtasks on the agent
+- a few videos of doing a variety of investigations - opening claude code and replicate the introspection paper - starting claude code and have it run. Use claude code to do your reasearch
+- using claude code to do research directly - have some variety of tasks and makshould we e videos. fairly mindblowing to have it do steering vectors
+- have an autorater that evals a steering result
+- have a checkpoint defined for when u get feedback?
+- whats better as a ui for cli vs notebook?
+- woult it be useful or release it via claude 
+
+Two different use cases:
+1. use it to conduct experiments on agents and do measurements
+    a.) release chinese model investigations on this infra?
+2. use it as a researcher tool
+    b.) release modal infra mcp server for researchers to use with claude code

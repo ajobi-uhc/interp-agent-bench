@@ -1,0 +1,55 @@
+name: "introspection-multi-pod"
+
+task: "task.md"
+
+# Workspace: Where outputs get synced locally
+workspace:
+  local_root: "./workspace"
+
+# Environment: GPU setup for each pod
+environment:
+  gpu:
+    gpu_type: "A10G"
+    gpu_count: 1
+    use_model_volumes: true
+
+  image:
+    python_packages:
+      - "torch"
+      - "transformers"
+      - "accelerate"
+      - "jupyter"
+      - "jupyter_client"
+      - "pandas"
+      - "matplotlib"
+      - "numpy"
+
+  models:
+    - name: "google/gemma-2-9b-it"
+      device: "auto"
+      dtype: "bfloat16"
+      trust_remote_code: true
+      is_peft: false
+
+# Execution: All agents use notebooks
+execution:
+  type: "notebook"
+  obfuscate: false
+
+# Harness: Multi-pod with driver + supervisor per pod
+harness:
+  type: "multi_pod"
+
+  # Number of research pods (each gets own GPU cluster)
+  num_pods: 1
+
+  # Agents within each pod (share GPU/notebook)
+  pod_agents:
+    - driver      # Does the experiments
+
+  # Skills available to all agents
+  skills:
+    - gpu-environment
+    - research-methodology
+    - extract-activations
+    - steering-hook

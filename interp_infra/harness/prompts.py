@@ -149,6 +149,7 @@ def build_user_prompt(
     task: str,
     agent_provider: Optional[str] = None,
     session_id: Optional[str] = None,
+    jupyter_url: Optional[str] = None,
 ) -> str:
     """
     Build user prompt from task.
@@ -162,6 +163,7 @@ def build_user_prompt(
         task: The research task to perform
         agent_provider: The agent provider (claude/openai)
         session_id: Pre-warmed session ID (if available)
+        jupyter_url: Jupyter URL for the session (if available)
 
     Returns:
         Complete user prompt string
@@ -174,7 +176,7 @@ def build_user_prompt(
         parts.append(f"A GPU environment with models already loaded is ready for you.\n")
         parts.append(f"**IMPORTANT**: Start by attaching to the pre-warmed session:\n")
         parts.append(f"```\n")
-        parts.append(f'attach_to_session(session_id="{session_id}")\n')
+        parts.append(f'attach_to_session(session_id="{session_id}", jupyter_url="{jupyter_url}")\n')
         parts.append(f"```\n")
         parts.append(f"This will give you instant access to the loaded models without waiting.\n")
         parts.append(f"Do NOT use `start_new_session` - the environment is already ready!\n")
@@ -200,6 +202,7 @@ def build_agent_prompts(
     task: str,
     agent_provider: Optional[str] = None,
     session_id: Optional[str] = None,
+    jupyter_url: Optional[str] = None,
     skills: Optional[list] = None,
 ) -> AgentPrompts:
     """
@@ -209,6 +212,7 @@ def build_agent_prompts(
         task: The research task
         agent_provider: Agent provider (claude/openai)
         session_id: Pre-warmed session ID from deployment (if available)
+        jupyter_url: Jupyter URL for the session (if available)
         skills: List of skill names available in the environment
 
     Returns:
@@ -219,6 +223,7 @@ def build_agent_prompts(
     print("="*70)
     print(f"   agent_provider: {agent_provider or 'claude'}")
     print(f"   session_id: {session_id or 'none (will start fresh)'}")
+    print(f"   jupyter_url: {jupyter_url or 'none'}")
     print(f"   skills: {', '.join(skills) if skills else 'none'}")
     print("="*70)
 
@@ -228,6 +233,7 @@ def build_agent_prompts(
         task=task,
         agent_provider=agent_provider,
         session_id=session_id,
+        jupyter_url=jupyter_url,
     )
 
     prompts = AgentPrompts(

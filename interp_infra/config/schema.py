@@ -105,15 +105,32 @@ class HarnessConfig(BaseModel):
     """
     type: str = Field(
         default="single_agent",
-        description="Harness type: 'single_agent', 'multi_agent', 'petri', etc."
+        description="Harness type: 'single_agent', 'multi_pod', 'petri', etc."
     )
     skills: List[str] = Field(
         default_factory=list,
         description="Skills to load (e.g., ['api-access', 'steering-vectors'])"
     )
-    # Future: Add harness-specific configs
-    # multi_agent: Optional[MultiAgentConfig] = None
-    # petri: Optional[PetriConfig] = None
+    num_pods: int = Field(
+        default=1,
+        description="Number of research pods (each gets own GPU cluster)"
+    )
+    pod_agents: List[str] = Field(
+        default_factory=list,
+        description="Agent roles within each pod (e.g., ['driver', 'supervisor'])"
+    )
+
+
+# ============================================================================
+# Workspace Configuration
+# ============================================================================
+
+class WorkspaceConfig(BaseModel):
+    """Workspace configuration for experiment outputs."""
+    local_root: str = Field(
+        default="./outputs",
+        description="Local directory where notebooks/outputs sync"
+    )
 
 
 # ============================================================================
@@ -131,6 +148,12 @@ class ExperimentConfig(BaseModel):
     # Core metadata
     name: str = Field(..., description="Experiment name")
     task: str = Field(..., description="Task description for the agent")
+
+    # Workspace
+    workspace: WorkspaceConfig = Field(
+        default_factory=WorkspaceConfig,
+        description="Workspace configuration for outputs"
+    )
 
     # Stage 1: Environment (Infrastructure)
     environment: EnvironmentConfig = Field(
