@@ -1,14 +1,14 @@
 ---
-description: Deploy and run an interpretability experiment from config
+description: Deploy GPU infrastructure for interpretability experiments
 ---
 
-You help users deploy GPU infrastructure and spawn research agents from a config file.
+You help users deploy GPU infrastructure from a config file.
 
 ## Steps to Follow:
 
 ### 1. Get Config Path
 - If user provided a path, use it
-- Otherwise ask: "Which experiment config should I run? (e.g., ux-test/config.yaml)"
+- Otherwise ask: "Which experiment config should I run? (e.g., config.yaml)"
 
 ### 2. Deploy Infrastructure
 Call the `deploy_from_config` tool with the config path:
@@ -16,11 +16,11 @@ Call the `deploy_from_config` tool with the config path:
 result = deploy_from_config("path/to/config.yaml")
 ```
 
-This provisions GPU clusters, loads models, and returns deployment info.
+This provisions GPU clusters, loads models, starts Jupyter, and returns connection info.
 
-### 2.5. Attach to All Sessions
+### 3. Attach to All Sessions
 
-CRITICAL: You must attach to each session before spawning agents:
+Attach to each deployed session to enable notebook interaction:
 
 ```python
 for pod in result["pods"]:
@@ -31,10 +31,35 @@ for pod in result["pods"]:
     )
 ```
 
-This registers the sessions with the Scribe MCP server so agents can use execute_code and other tools.
+### 4. Load Available Skills
 
-### 3. Show Deployment Summary
-Tell the user what was deployed with the Jupyter URLs to monitor:
+After attaching, load and show available skills to understand what capabilities are available:
+
+```python
+# Import the prompt builder to get skill documentation
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd()))
+
+from interp_infra.harness.prompts import build_system_prompt
+
+# Get skills from config if available, otherwise look for common skills
+skills_to_load = config.get('harness', {}).get('skills', [])
+if not skills_to_load:
+    # Check what skills exist
+    skills_dir = Path.cwd() / "skills"
+    if skills_dir.exists():
+        skills_to_load = [f.stem for f in skills_dir.glob("*.md")]
+
+# Build system prompt with skill documentation
+if skills_to_load:
+    system_instructions = build_system_prompt(skills=skills_to_load)
+    print("\n📚 Available Skills:\n")
+    print(system_instructions)
+```
+
+### 5. Show Deployment Summary
+Tell the user what was deployed and what skills are available:
 ```
 ✅ Deployed {num_pods} pod(s):
 
@@ -42,77 +67,27 @@ Pod: {pod_id}
 - GPU: {from config}
 - Model: {from config}
 - Session: {session_id}
-- Agent roles: {', '.join(pod.agents)}
-- 📊 Watch live: {pod.jupyter_url}
+- 📊 Watch live: {jupyter_url}
 
-Open the Jupyter URL in your browser to watch the notebook in real-time as agents work.
+Workspace: {workspace_root}
+
+📚 Available Skills: {', '.join(skills_to_load)}
+
+{Brief summary of what each skill does based on the system_instructions}
 ```
 
-### 4. Ask About Agent Spawning
-Present options:
-```
-Ready to spawn agents! Choose:
-1. Spawn all agents now (recommended)
-2. Spawn agents one at a time (more control)
-3. Just show setup info (I'll spawn manually)
-```
+## What's Next
 
-### 5. Spawn Agents (if requested)
-
-**CRITICAL: Spawn all agents in PARALLEL by making multiple Task tool calls in a SINGLE message.**
-
-For each pod:
-- Read the task.md file from the same directory as config.yaml
-- Prepare prompts for ALL agents in this pod
-- Make ONE message with multiple Task tool calls (one per agent)
-
-For each agent role in `pod["agents"]`:
-
-  **Extract role instructions:**
-  - Look for section "### For {Role} Agent:" in task.md (case-insensitive)
-  - Extract that section's content
-  - If no role-specific section exists, use the full task content
-
-  **Spawn agent with Task tool (all in one message):**
-  ```
-  Prompt structure:
-
-  You are the {role} agent for this experiment.
-
-  ## Session Info
-  - session_id: {pod.session_id}
-  - jupyter_url: {pod.jupyter_url}
-  - notebook_path: {pod.notebook_path}
-
-  IMPORTANT: You are ALREADY ATTACHED to the session. Do NOT call attach_to_session() again.
-
-  ## Your Role Instructions
-  {role_specific_instructions_from_task_md}
-
-  ## Full Experimental Protocol
-  {full_task_md_content}
-
-  Begin your work now following the experimental protocol.
-  ```
-
-### 6. Tell User How to Monitor
-
-After spawning agents:
-```
-🚀 Agents are running!
-
-Monitor progress:
-- Open the Jupyter URL(s) shown above in your browser
-- Use /agents to see agent status
-- Agents share the notebook - you'll see all their work in real-time
-```
+The infrastructure is ready. You can now:
+- Read task.md to understand the experiment
+- Execute code directly using execute_code(session_id, code)
+- Use the available Skills (they're already loaded in the environment)
+- Add markdown documentation with add_markdown(session_id, content)
+- Monitor progress by opening the Jupyter URL in your browser
 
 ## Important Notes:
 
-- `deploy_from_config` already provisions everything - GPU, model loading, session setup
-- You must call `attach_to_session` for each pod before spawning agents
-- Spawned agents are already attached to sessions - they should NOT call attach_to_session again
-- All agents in a pod share the same notebook on the remote GPU
-- Users monitor progress via the Jupyter URL in their browser
-- Agents have access to all Skills defined in the plugin
-- Use the Task tool to spawn each agent with the appropriate prompt
+- `deploy_from_config` provisions everything: GPU, model loading, Jupyter session
+- `attach_to_session` registers each session so you can use execute_code() and other notebook tools
+- Multiple pods share the same config but run independently
+- All notebook operations require the session_id from the pod info

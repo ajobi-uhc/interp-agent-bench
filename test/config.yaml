@@ -1,4 +1,4 @@
-name: "introspection-multi-pod"
+name: "refusal-is-mediated-by-single-dir"
 
 task: "task.md"
 
@@ -19,13 +19,14 @@ environment:
       - "transformers"
       - "accelerate"
       - "jupyter"
+      - "datasets"
       - "jupyter_client"
       - "pandas"
       - "matplotlib"
       - "numpy"
 
   models:
-    - name: "google/gemma-2-9b-it"
+    - name: "google/gemma-2b"
       device: "auto"
       dtype: "bfloat16"
       trust_remote_code: true

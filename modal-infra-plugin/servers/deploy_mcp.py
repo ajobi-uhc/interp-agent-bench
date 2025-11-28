@@ -24,8 +24,8 @@ mcp = FastMCP("deploy")
 def deploy_from_config(config_path: str) -> Dict[str, Any]:
     """Deploy experiment infrastructure from config.yaml.
 
-    Automatically provisions all GPU clusters specified in the config.
-    For multi-pod configs, deploys all pods and returns their connection info.
+    Provisions GPU clusters, loads models, and starts Jupyter sessions.
+    Returns connection info for each deployed pod.
 
     Args:
         config_path: Path to config.yaml (e.g., "config.yaml" or "tasks/experiment/config.yaml")
@@ -38,7 +38,6 @@ def deploy_from_config(config_path: str) -> Dict[str, Any]:
                     "session_id": "abc123",
                     "jupyter_url": "https://...",
                     "notebook_path": "./outputs/notebook.ipynb",
-                    "agents": ["driver", "supervisor"],
                     "sandbox_id": "sb-xxx"
                 }
             ],
@@ -46,10 +45,8 @@ def deploy_from_config(config_path: str) -> Dict[str, Any]:
             "status": "ready"
         }
 
-    Next steps:
-        1. For each pod, call: attach_to_session(session_id, jupyter_url)
-        2. Spawn subagents as specified in config
-        3. Each agent uses execute_code(session_id, code)
+    The session_id and jupyter_url can be used with the 'scribe' MCP server
+    to interact with the Jupyter kernel (attach_to_session, execute_code, etc).
     """
     config_path = Path(config_path)
 
@@ -70,13 +67,12 @@ def deploy_from_config(config_path: str) -> Dict[str, Any]:
     workspace_root = workspace_root.resolve()
     workspace_root.mkdir(parents=True, exist_ok=True)
 
-    # Get number of pods
+    # Get number of pods from config
     num_pods = getattr(config.harness, 'num_pods', 1)
-    pod_agents = getattr(config.harness, 'pod_agents', [])
 
     print(f"📦 Deploying {num_pods} pod(s)...")
 
-    # Always return array of pods (consistent interface)
+    # Deploy each pod and return connection info
     pods = []
     for i in range(num_pods):
         pod_id = f"pod_{i+1}" if num_pods > 1 else "pod_1"
@@ -97,7 +93,6 @@ def deploy_from_config(config_path: str) -> Dict[str, Any]:
             "session_id": deployment.session_id,
             "jupyter_url": deployment.jupyter_url,
             "notebook_path": str(notebook_path),
-            "agents": pod_agents,
             "sandbox_id": deployment.sandbox_id
         })
 

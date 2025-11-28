@@ -7,7 +7,6 @@ environment:
   gpu:
     gpu_type: "H100"
     gpu_count: 1
-
   image:
     python_packages:
       - "torch"
@@ -22,12 +21,15 @@ environment:
       - "seaborn"
 
   models:
-    - name: "bcywinski/gemma-2-9b-it-user-female"
-      is_peft: true
-      base_model: "google/gemma-2-9b-it"
-      device: "cuda"
-      dtype: "bfloat16"
-      trust_remote_code: true
+    - name: "bcywinski/gemma-2-9b"
+
+  systems:
+    github_repos:
+      - "github.com/shutdown_resistance"
+    containers:
+      - "shutdown_resistance/to/dockerfile"
+  
+  mode: "notebook"
 
 # Stage 2: Execution (Interface)
 execution:

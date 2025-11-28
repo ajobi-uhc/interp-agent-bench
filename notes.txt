@@ -1,3 +1,5 @@
+Sen:
+
 - providing the skills to make it easier to use agent for the user (ecosystem of skills)
 - what are realistic inputs for end-to-end results? 
 - interactive - but allowing for long horizon tasks and is also immediately useful - enough cool skills and add different tools
@@ -15,3 +17,159 @@ Two different use cases:
     a.) release chinese model investigations on this infra?
 2. use it as a researcher tool
     b.) release modal infra mcp server for researchers to use with claude code
+
+
+----------------------------------
+
+
+What has been done since & current state
+tldr; prioritizing making it modular, hackable and a solid base to then move towards making it a research tool or just deploying it standalone
+1. Infrastructure overhaul to use modal sandboxes and loading arbitrary environments
+2. Writing agent harnesses that runs Claude code non interactively to test different harnesses - petri can be called here as a subagent 
+3. An interactive mode to use our env infra as an Mcp server and run experiments as a researcher
+Spending a GOD AWFUL amoutn of time on docker in docker for deploying - going to be better about this and prioritize away
+
+What is the most impactful NXT step? What is a good thing to aim for to release by Dec 15th. Roughly 2 week timeline
+
+Who will it be useful for?
+- people who actively want to try building better agents and testing agent capabilities fr eg. People wanting to hill climb to make better investigator agents?
+- People who want to try doing research with agents in general - researcher tool
+
+Agent infra (this can also be a researcher tool - cc Julian):
+- Can release infra as is with docs and some experiments on Chinese models we did we investigator agents built on the infra
+    - Run petri on the same infra to benchmark against these investigator agents
+    - Create a set of skills that the agent uses that people using this infra can also leverage directly
+- Test multiple different agent harnesses and how they perform on the given task and measure stuff like
+    - what techniques or skills are most useful?
+    - how should these techniques be formatted or supplied to do best?
+
+Researcher tool: (evidence ish is Sen is interested lol and Clement and Cam (& Johnny lin) too - but real test is whether they actually would use it)
+- Let people use our infra plugin directly with Claude code via an mcp
+    - modal-infra mcp helps solve the issue of env setup and getting the env to a place where agents can actually use it meaningfully. it builds the env, loads containers, downloads models, prepares skills etc
+- Make the best open source investigator agent with the combo of the above infra and adding it in our harness - make this runabble in claude code as a subagent plugin as well
+- Create a more explicit website that allows selecting tools and running the agent on a task
+- Create a set of skills for claude to use that allows it to use whitebox stuff (just .md files)
+- ship on neuronpedia as api like /agent/task (have ui to equip skills exactly like this and hit run)
+
+
+- if its actually useful the researcher can suck it up lol
+- make 1 happen well aka agent infra- 
+- maybe too mcuh drudge work for teh researcher to use it
+- think abut how long I wanna maintain it - 5 - 10 hours
+- record several videos doing basic things with the library, docs and tutorials  
+- "u can run petri in this" 
+1. show what it can do
+2. show how easily hackable it is
+- how easily can i use this with cursor ie can ai agents use things
+
+
+papers:
+try refusal is mediated by a single direction: pick x model and replicate the experiment in figure 1 on this model.
+activation addition paper from alex turner
+goodfire weights paper
+do I know this entity paper - used existing SAEs to find SAE latents
+
+why would someone care/use this?
+- whats important is enabling research projects on agents - having an agent do x in a research projects
+- hackable petri
+- can we create an agent that does automated red teaming ie breaks through an autorater (maybe break through petri)
+- create prompts to make a model deceptive - make a model red teaming make an okay version of this
+- environment creator and as an environment
+- make a patient that realistically exhibits psychosis in the model make an env for this.
+
+
+two things that matter (niche audience of researchers)
+- see a thing that they care about being doable
+- hackable
+
+
+
+1. make this robust to people not knowing the paper they are replicating
+2. make a config making agent maybe that just works? try opus 4.5
+
+
+- replicating a paper vs replicating an environments
+- seeing how hard it is to make an agent for a given task - use bartosz user female model.
+- 
+
+
+- questions for sen: what would need to be in the mvp for him to use it
+- send a message for call
+
+
+=========wil
+
+notes from videos
+
+1. fix the refresh thing bug and make it easy to see where the agent is working currently
+2. test with actually telling claude what you would want and intervening on the subagent flow
+3. have a code quality and style guidance prompt that we append
+4. stop after experiment is done
+
+
+
+
+===========
+
+what might be needed for release?
+
+- can i come in like julian etc. and just put in a technique that i made relatively easily and run it against a bunch of tasks?
+- can we have a hackable playable version of petri as a harness
+- can we spawn an environment with an autorater where another agent does automated red teaming? ie tries to break through an autorater that is flagging for malicious prompts?
+- can we make an agent that can control the prompts given to another agent that is talking to a target model and see which prompt most reliably gets the target to exhibit psychosis inducing behaviour
+
+
+seperately code wise
+- i need to have an environments abstraction that has providers with clients for each modal etc.
+- i need to have execution support for just cli, or mcp tool calling
+- i need to have better harnesses and slightly more diversity
+
+
+- check how having an api with a hidden prompt might work - is this the bes tthiing to do?
+- maybe for things like when we have an autorater we wrap up the env with api in a docker container that the agent interacts with in some more standardized way
+
+
+
+===== wip abstractions ====
+
+environment is the setup stage. it prepares the file system installs anyhting, github repos, docker containers, downloads models etc.
+needs:
+- image (the container containing the thing to run)
+- interface (indicates what needs to be made available to the agent in its exeuction)
+
+at the end it returns out the interface ie things the agent needs access to which the execution layer uses to decide
+how to expose it to it
+
+execution (takes in an interface of stuff to expose -> runs and exposes it to agent -> session id):
+notebook:
+- loads any models
+- runs docker container and adds functions to access it into namespace
+- loads the skills dictionary and available skills into namespace?
+cli:
+- creates a script that loads in models
+- runs script to run docker container
+- has a skills.md folder for agent to use
+mcp:
+god knows
+
+
+Clean flow:
+environment: f(image, interface) -> clones repo, downloads model, prepares file system -> interface, sandbox_url
+execution: f(interface, sandbox_url) -> loads in interface, creates model objects, runs container and exposes functions -> session id
+harness: connects agents to a given session id and fills in prompts.
+
+implementation details:
+we seemingly need a docker container runner for this that takes a repo, builds and runs it, exposes the api
+our environment builder would use this service to run containers ie github repos people define
+
+
+
+really have 3 seperate investigations
+- white box model
+- shutdown ie modify repo run some experment and play with environment and tool calls
+- given a scoped environment with xyz available functions come up with best x that does y
+
+
+level of scope is the main factor here
+environment might have another property of "scoped" if it is scoped then the specific repos or whatever will scope 
+whats available and run in a container that the agent cant access

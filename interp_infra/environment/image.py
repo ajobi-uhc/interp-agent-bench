@@ -1,8 +1,15 @@
 """Build Modal images from configuration."""
 
+import os
+import tempfile
+from pathlib import Path
+from typing import Optional
+
 import modal
 
-from ..config.schema import ImageConfig
+# Use the 2025.06 Modal Image Builder which avoids the need to install Modal client
+# dependencies into the container image.
+os.environ["MODAL_IMAGE_BUILDER_VERSION"] = "2025.06"
 
 
 class ModalImageBuilder:
@@ -10,18 +17,33 @@ class ModalImageBuilder:
 
     def __init__(
         self,
-        image_config: ImageConfig,
-        image_name: str = "interp-gpu-image",
+        python_packages: list[str] = None,
+        system_packages: list[str] = None,
+        python_version: str = "3.11",
+        docker_in_docker: bool = False,
+        notebook: bool = False,
+        custom_setup_commands: list[str] = None,
     ):
         """
         Initialize Modal image builder.
 
         Args:
-            image_config: Image configuration
-            image_name: Name for the built image (used for caching)
+            python_packages: Python packages to install
+            system_packages: System packages to apt-install
+            python_version: Python version
+            docker_in_docker: Whether to enable docker-in-docker
+            notebook: Whether to include notebook/jupyter server
+            custom_setup_commands: Additional setup commands
         """
-        self.config = image_config
-        self.image_name = image_name
+        self.python_packages = python_packages or []
+        self.system_packages = system_packages or []
+        self.python_version = python_version
+        self.docker_in_docker = docker_in_docker
+        self.notebook = notebook
+        self.custom_setup_commands = custom_setup_commands or []
+        
+        # Store dockerd script path if needed
+        self._dockerd_script_file = None
 
     def build(self) -> modal.Image:
         """
@@ -30,50 +52,174 @@ class ModalImageBuilder:
         Returns:
             modal.Image object ready to use with Modal functions
         """
-        # Start with base image matching the CUDA version from Docker config
-        # Extract CUDA version from base_image like "nvidia/cuda:12.1.0-base-ubuntu22.04"
-        base_image = self.config.base_image
+        if self.docker_in_docker:
+            image = self._build_docker_base()
+        else:
+            image = self._build_standard_base()
 
-        # Determine Python version
-        python_version = self.config.python_version
+        # Install user-specified system packages
+        if self.system_packages:
+            image = image.apt_install(*self.system_packages)
 
-        # Start with debian_slim and Python version
-        image = modal.Image.debian_slim(python_version=python_version)
+        # Install user-specified Python packages
+        if self.python_packages:
+            image = image.pip_install(*self.python_packages)
 
-        # Install system packages
-        if self.config.system_packages:
-            image = image.apt_install(*self.config.system_packages)
+        # Add notebook support if needed
+        if self.notebook:
+            image = self._add_notebook_support(image)
 
-        # Install Python packages
-        if self.config.python_packages:
-            image = image.uv_pip_install(*self.config.python_packages)
+        # Run custom setup commands
+        if self.custom_setup_commands:
+            image = image.run_commands(*self.custom_setup_commands)
 
-        # Install Scribe notebook server dependencies
-        image = image.uv_pip_install(
-            "jupyter_server",
-            "nbformat",
-            "tornado",
-            "fastmcp",
-            "Pillow",  # Required by scribe._image_processing_utils
-            "requests",  # Required by scribe._notebook_server_utils
+        return image
+
+    def _build_standard_base(self) -> modal.Image:
+        """Build standard debian slim base."""
+        return modal.Image.debian_slim(python_version=self.python_version)
+
+    def _build_docker_base(self) -> modal.Image:
+        """Build base image with docker-in-docker support."""
+        # Create the dockerd startup script
+        dockerd_script = self._get_dockerd_script()
+        
+        # Write to temp file for Modal to pick up
+        self._dockerd_script_file = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".sh"
+        )
+        self._dockerd_script_file.write(dockerd_script)
+        self._dockerd_script_file.flush()
+        os.chmod(self._dockerd_script_file.name, 0o755)
+
+        image = (
+            modal.Image.from_registry("ubuntu:22.04")
+            .env({"DEBIAN_FRONTEND": "noninteractive"})
+            .apt_install(["wget", "ca-certificates", "curl", "net-tools", "iproute2"])
+            .run_commands([
+                "install -m 0755 -d /etc/apt/keyrings",
+                "curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc",
+                "chmod a+r /etc/apt/keyrings/docker.asc",
+                'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo \\"${UBUNTU_CODENAME:-$VERSION_CODENAME}\\") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null',
+                "mkdir /build",
+            ])
+            .apt_install([
+                "docker-ce=5:27.5.0-1~ubuntu.22.04~jammy",
+                "docker-ce-cli=5:27.5.0-1~ubuntu.22.04~jammy",
+                "containerd.io",
+                "docker-buildx-plugin",
+                "docker-compose-plugin",
+            ])
+            # Modern runc for reliable networking
+            .run_commands([
+                "rm $(which runc)",
+                "wget https://github.com/opencontainers/runc/releases/download/v1.3.0/runc.amd64",
+                "chmod +x runc.amd64",
+                "mv runc.amd64 /usr/local/bin/runc",
+            ])
+            # Use iptables-legacy (gVisor doesn't support nftables)
+            .run_commands([
+                "update-alternatives --set iptables /usr/sbin/iptables-legacy",
+                "update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy",
+            ])
+            # Add dockerd startup script
+            .add_local_file(self._dockerd_script_file.name, "/start-dockerd.sh", copy=True)
+            .run_commands(["chmod +x /start-dockerd.sh"])
+            # Install Python since we started from ubuntu, not debian_slim
+            .apt_install(["python3", "python3-pip", "python3-venv", "python-is-python3"])
         )
 
-        # Copy Scribe notebook server code into the image
-        from pathlib import Path
+        return image
+
+    def _add_notebook_support(self, image: modal.Image) -> modal.Image:
+        """Add Jupyter notebook server and MCP support."""
+        # Install notebook dependencies and common ML packages
+        image = image.pip_install(
+            # Jupyter core
+            "jupyter_server",
+            "ipykernel",
+            "jupyter",
+            "jupyter_client",
+            "nbformat",
+            "tornado",
+            # MCP and utilities
+            "fastmcp",
+            "Pillow",
+            "requests",
+            # ML and data science packages
+            "torch",
+            "transformers",
+            "accelerate",
+            "pandas",
+            "matplotlib",
+            "numpy",
+            "seaborn",
+        )
+
+        # Copy scribe notebook server code
         scribe_dir = Path(__file__).parent.parent.parent / "scribe"
-        image = image.add_local_dir(str(scribe_dir), remote_path="/root/scribe")
+        if scribe_dir.exists():
+            image = image.add_local_dir(str(scribe_dir), remote_path="/root/scribe")
 
-        # Copy interp_infra code (needed for setup_pipeline)
-        interp_infra_dir = Path(__file__).parent.parent
-        image = image.add_local_dir(str(interp_infra_dir), remote_path="/root/interp_infra")
+        # Copy infra code (needed for setup pipeline)
+        infra_dir = Path(__file__).parent.parent
+        image = image.add_local_dir(str(infra_dir), remote_path="/root/interp_infra")
 
-        # Copy skills directory (needed for kernel_setup)
+        # Copy skills directory
         skills_dir = Path(__file__).parent.parent.parent / "skills"
         if skills_dir.exists():
             image = image.add_local_dir(str(skills_dir), remote_path="/root/skills")
 
-        # Run custom setup commands
-        if self.config.custom_setup_commands:
-            image = image.run_commands(*self.config.custom_setup_commands)
-
         return image
+
+    def _get_dockerd_script(self) -> str:
+        """Get the docker daemon startup script."""
+        return """#!/bin/bash
+set -xe -o pipefail
+
+dev=$(ip route show default | awk '/default/ {print $5}')
+if [ -z "$dev" ]; then
+    echo "Error: No default device found."
+    ip route show
+    exit 1
+else
+    echo "Default device: $dev"
+fi
+addr=$(ip addr show dev "$dev" | grep -w inet | awk '{print $2}' | cut -d/ -f1)
+if [ -z "$addr" ]; then
+    echo "Error: No IP address found for device $dev."
+    ip addr show dev "$dev"
+    exit 1
+else
+    echo "IP address for $dev: $addr"
+fi
+
+echo 1 > /proc/sys/net/ipv4/ip_forward
+iptables-legacy -t nat -A POSTROUTING -o "$dev" -j SNAT --to-source "$addr" -p tcp
+iptables-legacy -t nat -A POSTROUTING -o "$dev" -j SNAT --to-source "$addr" -p udp
+
+update-alternatives --set iptables /usr/sbin/iptables-legacy
+update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+
+exec /usr/bin/dockerd --iptables=false --ip6tables=false -D"""
+
+    def get_sandbox_options(self) -> dict:
+        """Get options needed when creating the sandbox."""
+        options = {}
+        if self.docker_in_docker:
+            options["experimental_options"] = {"enable_docker": True}
+        return options
+
+    def get_sandbox_entrypoint(self) -> Optional[str]:
+        """Get entrypoint command for sandbox, if any."""
+        if self.docker_in_docker:
+            return "/start-dockerd.sh"
+        return None
+
+    def cleanup(self):
+        """Clean up temporary files."""
+        if self._dockerd_script_file:
+            try:
+                os.unlink(self._dockerd_script_file.name)
+            except:
+                pass
