@@ -3,9 +3,12 @@
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 import modal
+
+if TYPE_CHECKING:
+    from .sandbox import ExecutionMode
 
 # Use the 2025.06 Modal Image Builder which avoids the need to install Modal client
 # dependencies into the container image.
@@ -21,7 +24,7 @@ class ModalImageBuilder:
         system_packages: list[str] = None,
         python_version: str = "3.11",
         docker_in_docker: bool = False,
-        notebook: bool = False,
+        execution_mode: Optional["ExecutionMode"] = None,
         custom_setup_commands: list[str] = None,
     ):
         """
@@ -32,16 +35,16 @@ class ModalImageBuilder:
             system_packages: System packages to apt-install
             python_version: Python version
             docker_in_docker: Whether to enable docker-in-docker
-            notebook: Whether to include notebook/jupyter server
+            execution_mode: Execution mode (CLI, NOTEBOOK, MCP)
             custom_setup_commands: Additional setup commands
         """
         self.python_packages = python_packages or []
         self.system_packages = system_packages or []
         self.python_version = python_version
         self.docker_in_docker = docker_in_docker
-        self.notebook = notebook
+        self.execution_mode = execution_mode
         self.custom_setup_commands = custom_setup_commands or []
-        
+
         # Store dockerd script path if needed
         self._dockerd_script_file = None
 
@@ -65,9 +68,16 @@ class ModalImageBuilder:
         if self.python_packages:
             image = image.pip_install(*self.python_packages)
 
-        # Add notebook support if needed
-        if self.notebook:
-            image = self._add_notebook_support(image)
+        # Add execution mode specific dependencies
+        if self.execution_mode:
+            # Import here to avoid circular dependency
+            from .sandbox import ExecutionMode
+
+            if self.execution_mode == ExecutionMode.NOTEBOOK:
+                image = self._add_notebook_support(image)
+            elif self.execution_mode == ExecutionMode.MCP:
+                # MCP mode not yet implemented
+                pass
 
         # Run custom setup commands
         if self.custom_setup_commands:

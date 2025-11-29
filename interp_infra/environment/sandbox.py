@@ -10,7 +10,12 @@ import modal
 import requests
 
 from .image import ModalImageBuilder
-from .volumes import get_or_create_volume, check_model_in_volume
+from .volumes import (
+    get_or_create_volume,
+    check_model_in_volume,
+    download_model_to_volume,
+    commit_volumes,
+)
 from .handles import ModelHandle, RepoHandle
 
 
@@ -35,6 +40,7 @@ class SandboxConfig:
     timeout: int = 3600 * 24  # 24 hours
     secrets: list[str] = field(default_factory=list)  # named secrets
     env: dict[str, str] = field(default_factory=dict)
+    encrypted_ports: list[int] = field(default_factory=list)  # Additional ports to expose
 
 
 class Sandbox:
@@ -87,7 +93,7 @@ class Sandbox:
             system_packages=self.config.system_packages,
             python_version=self.config.python_version,
             docker_in_docker=self.config.docker_in_docker,
-            notebook=self.config.notebook,
+            execution_mode=self.config.execution_mode,
         )
         image = self._image_builder.build()
         
@@ -130,14 +136,14 @@ class Sandbox:
             sandbox_kwargs["experimental_options"] = {"enable_docker": True}
 
         # Add encrypted ports based on execution mode and debug flag
-        encrypted_ports = []
+        encrypted_ports = list(self.config.encrypted_ports)  # Start with config
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
             encrypted_ports.append(8888)
         if self.config.debug:
             encrypted_ports.append(8080)
         if encrypted_ports:
             sandbox_kwargs["encrypted_ports"] = encrypted_ports
-        
+
         # Create sandbox
         print("  Creating sandbox...")
         self._sandbox = modal.Sandbox.create(**sandbox_kwargs)
@@ -155,7 +161,7 @@ class Sandbox:
         self._clone_prepared_repos()
 
         # Commit volume changes after all downloads
-        self._commit_volumes()
+        commit_volumes(self._volumes)
         
         # Start services based on execution mode
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
@@ -284,7 +290,7 @@ class Sandbox:
         self,
         url: str,
         dockerfile: Optional[str] = None,
-        install: bool = False,
+        install: str = False,
     ) -> RepoHandle:
         """
         Prepare a repo for cloning.
@@ -498,7 +504,7 @@ curl -fsSL https://code-server.dev/install.sh | sh > /var/log/code-server-instal
         if handle.is_peft and handle.base_model:
             if not check_model_in_volume(self, handle.base_model_path):
                 print(f"  Downloading base model: {handle.base_model}")
-                self._download_model_weights(handle.base_model, handle.base_model_path)
+                download_model_to_volume(self, handle.base_model, handle.base_model_path)
 
         # Download main model/adapter
         if not check_model_in_volume(self, handle.volume_path):
@@ -506,30 +512,8 @@ curl -fsSL https://code-server.dev/install.sh | sh > /var/log/code-server-instal
                 print(f"  Downloading model...")
             else:
                 print(f"  Downloading model: {handle.name}")
-            self._download_model_weights(handle.name, handle.volume_path)
-    
-    def _download_model_weights(self, model_id: str, volume_path: str):
-        """Download model weights to volume path."""
-        script = f'''
-import os
-from pathlib import Path
-from huggingface_hub import snapshot_download
+            download_model_to_volume(self, handle.name, handle.volume_path)
 
-model_path = Path("{volume_path}")
-model_id = "{model_id}"
-token = os.environ.get("HF_TOKEN")
-
-if not (model_path / "config.json").exists():
-    model_path.mkdir(parents=True, exist_ok=True)
-    snapshot_download(
-        model_id,
-        local_dir=str(model_path),
-        token=token,
-        resume_download=True,
-    )
-'''
-        self.exec_python(script)
-    
     def _clone_prepared_repos(self):
         """Clone all prepared repos."""
         for handle in self._repo_handles:
@@ -557,25 +541,12 @@ if not repo_path.exists():
         if handle.install:
             print(f"  Installing repo: {handle.local_path}")
             try:
-                self.exec(f"cd {handle.local_path} && pip install -e .")
+                self.exec(f"cd {handle.local_path} && {handle.install}")
                 print(f"  Installation successful")
             except RuntimeError as e:
                 print(f"  Warning: Installation failed: {e}")
                 print(f"  You can manually install in the sandbox later")
 
-    def _commit_volumes(self):
-        """Commit all volume changes after downloads complete."""
-        if not self._volumes:
-            return
-
-        print("  Committing volume changes...")
-        for mount_path, volume in self._volumes.items():
-            try:
-                volume.commit()
-            except Exception as e:
-                # Commit may fail if called from client side; volumes are auto-persisted
-                print(f"    Note: Volume at {mount_path} auto-persisted (commit not needed)")
-    
     @property
     def jupyter_url(self) -> Optional[str]:
         """Get jupyter URL if notebook mode."""

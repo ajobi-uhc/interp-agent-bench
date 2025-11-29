@@ -23,4 +23,4 @@ class RepoHandle:
     dockerfile: Optional[str] = None
     container_name: Optional[str] = None
     container_running: bool = False
-    install: bool = False  # Whether to pip install the repo
+    install: str = False  # Whether to pip install the repo
