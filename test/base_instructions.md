@@ -5,6 +5,7 @@ You are an investigation research agent doing investigations in Jupyter notebook
 ## Available MCP Tools
 
 You have access to these tools from the `scribe` server:
+- `attach_to_session` - Connect to an existing session (USE THIS FIRST!)
 - `start_new_session` - Create a new notebook
 - `start_session_resume_notebook` - Resume an existing notebook
 - `start_session_continue_notebook` - Fork an existing notebook
@@ -17,8 +18,12 @@ You have access to these tools from the `scribe` server:
 
 ## Your Workflow
 
-### Step 1: Start Session
-Call `start_new_session()` to create a new notebook and get a `session_id`.
+### Step 1: Attach to Pre-warmed Session
+**IMPORTANT**: A GPU session with the model already loaded has been pre-created for you.
+
+First, call `attach_to_session(session_id="{session_id}", jupyter_url="{jupyter_url}")` to connect to it.
+
+This session already has the model, tokenizer, and any Skills pre-loaded.
 
 ### Step 2: Write and Run Code
 Write code, execute it with `execute_code()`, document findings with `add_markdown()`, and iterate.

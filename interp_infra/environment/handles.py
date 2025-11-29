@@ -15,7 +15,7 @@ class ModelHandle:
     base_model_path: Optional[str] = None
 
 
-@dataclass  
+@dataclass
 class RepoHandle:
     """Handle to a prepared repo."""
     url: str
@@ -23,3 +23,4 @@ class RepoHandle:
     dockerfile: Optional[str] = None
     container_name: Optional[str] = None
     container_running: bool = False
+    install: bool = False  # Whether to pip install the repo

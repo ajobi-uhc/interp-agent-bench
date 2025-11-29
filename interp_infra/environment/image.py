@@ -154,6 +154,7 @@ class ModalImageBuilder:
             "matplotlib",
             "numpy",
             "seaborn",
+            "datasets"
         )
 
         # Copy scribe notebook server code

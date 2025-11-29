@@ -3,6 +3,7 @@
 import os
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Optional
 
 import modal
@@ -11,6 +12,13 @@ import requests
 from .image import ModalImageBuilder
 from .volumes import get_or_create_volume, check_model_in_volume
 from .handles import ModelHandle, RepoHandle
+
+
+class ExecutionMode(Enum):
+    """Execution mode for the sandbox."""
+    CLI = "cli"  # No UI, just programmatic access via exec()
+    NOTEBOOK = "notebook"  # Jupyter notebook interface
+    MCP = "mcp"  # MCP server mode (not yet implemented)
 
 
 @dataclass
@@ -22,7 +30,8 @@ class SandboxConfig:
     gpu: Optional[str] = None  # e.g. "H100", "A100"
     gpu_count: int = 1
     docker_in_docker: bool = False
-    notebook: bool = False
+    execution_mode: ExecutionMode = ExecutionMode.CLI
+    debug: bool = False  # Start code-server for debugging
     timeout: int = 3600 * 24  # 24 hours
     secrets: list[str] = field(default_factory=list)  # named secrets
     env: dict[str, str] = field(default_factory=dict)
@@ -56,6 +65,7 @@ class Sandbox:
         self._model_handles: list[ModelHandle] = []
         self._repo_handles: list[RepoHandle] = []
         self._jupyter_url: Optional[str] = None
+        self._code_server_url: Optional[str] = None
         self._image_builder: Optional[ModalImageBuilder] = None
         
     def start(self, name: str = "sandbox") -> "Sandbox":
@@ -118,10 +128,15 @@ class Sandbox:
         # Add docker options if needed
         if self.config.docker_in_docker:
             sandbox_kwargs["experimental_options"] = {"enable_docker": True}
-            
-        # Add encrypted ports for notebook
-        if self.config.notebook:
-            sandbox_kwargs["encrypted_ports"] = [8888]
+
+        # Add encrypted ports based on execution mode and debug flag
+        encrypted_ports = []
+        if self.config.execution_mode == ExecutionMode.NOTEBOOK:
+            encrypted_ports.append(8888)
+        if self.config.debug:
+            encrypted_ports.append(8080)
+        if encrypted_ports:
+            sandbox_kwargs["encrypted_ports"] = encrypted_ports
         
         # Create sandbox
         print("  Creating sandbox...")
@@ -142,15 +157,28 @@ class Sandbox:
         # Commit volume changes after all downloads
         self._commit_volumes()
         
-        # Start jupyter if needed
-        if self.config.notebook:
+        # Start services based on execution mode
+        if self.config.execution_mode == ExecutionMode.NOTEBOOK:
             print("  Starting jupyter server...")
             self._start_jupyter()
             tunnels = self._sandbox.tunnels()
             self._jupyter_url = tunnels[8888].url
             self._wait_for_jupyter()
             print(f"  Jupyter URL: {self._jupyter_url}")
-        
+        elif self.config.execution_mode == ExecutionMode.MCP:
+            print("  MCP mode not yet implemented")
+        elif self.config.execution_mode == ExecutionMode.CLI:
+            print("  CLI mode - no services started")
+
+        # Start code-server if debug flag is set
+        if self.config.debug:
+            print("  Debug mode: Starting code-server...")
+            self._start_code_server()
+            tunnels = self._sandbox.tunnels()
+            self._code_server_url = tunnels[8080].url
+            self._wait_for_code_server()
+            print(f"  Code Server URL: {self._code_server_url}")
+
         print("  Sandbox ready")
         return self
     
@@ -253,40 +281,43 @@ class Sandbox:
         return handle
     
     def prepare_repo(
-        self, 
-        url: str, 
+        self,
+        url: str,
         dockerfile: Optional[str] = None,
+        install: bool = False,
     ) -> RepoHandle:
         """
         Prepare a repo for cloning.
-        
+
         Cloning happens when sandbox starts (or immediately if already started).
-        
+
         Args:
             url: GitHub repo URL or "org/repo"
             dockerfile: Optional path to Dockerfile to build
-            
+            install: Whether to pip install the repo after cloning
+
         Returns:
             RepoHandle with local path
         """
         if not url.startswith("http"):
             url = f"https://github.com/{url}"
-            
+
         repo_name = url.split("/")[-1].replace(".git", "")
         local_path = f"/workspace/{repo_name}"
-        
+
         handle = RepoHandle(
-            url=url, 
-            local_path=local_path, 
+            url=url,
+            local_path=local_path,
             dockerfile=dockerfile,
             container_name=repo_name if dockerfile else None,
+            install=install,
         )
         self._repo_handles.append(handle)
-        
+
         # If sandbox already running, clone now
         if self._sandbox:
             self._clone_repo(handle)
-        
+
         return handle
     
     def start_container(self, repo_handle: RepoHandle) -> None:
@@ -429,8 +460,32 @@ app.start()
             except Exception:
                 pass
             time.sleep(retry_delay)
-        
+
         print("  Warning: Jupyter may not be fully ready")
+
+    def _start_code_server(self):
+        """Start code-server (VS Code in browser)."""
+        # Install code-server
+        install_script = """
+curl -fsSL https://code-server.dev/install.sh | sh > /var/log/code-server-install.log 2>&1
+"""
+        self.exec(install_script)
+
+        # Start code-server
+        self.exec('nohup code-server --bind-addr 0.0.0.0:8080 --auth none /workspace > /var/log/code-server.log 2>&1 &')
+
+    def _wait_for_code_server(self, max_retries: int = 100, retry_delay: float = 2.0):
+        """Wait for code-server to be ready."""
+        for i in range(max_retries):
+            try:
+                response = requests.get(f"{self._code_server_url}/healthz", timeout=5)
+                if response.status_code == 200:
+                    return
+            except Exception:
+                pass
+            time.sleep(retry_delay)
+
+        print("  Warning: Code-server may not be fully ready")
     
     def _download_prepared_models(self):
         """Download all prepared models."""
@@ -498,6 +553,16 @@ if not repo_path.exists():
 '''
         self.exec_python(script)
 
+        # Install if requested
+        if handle.install:
+            print(f"  Installing repo: {handle.local_path}")
+            try:
+                self.exec(f"cd {handle.local_path} && pip install -e .")
+                print(f"  Installation successful")
+            except RuntimeError as e:
+                print(f"  Warning: Installation failed: {e}")
+                print(f"  You can manually install in the sandbox later")
+
     def _commit_volumes(self):
         """Commit all volume changes after downloads complete."""
         if not self._volumes:
@@ -515,7 +580,12 @@ if not repo_path.exists():
     def jupyter_url(self) -> Optional[str]:
         """Get jupyter URL if notebook mode."""
         return self._jupyter_url
-    
+
+    @property
+    def code_server_url(self) -> Optional[str]:
+        """Get code-server URL if code_server mode."""
+        return self._code_server_url
+
     @property
     def sandbox_id(self) -> Optional[str]:
         """Get Modal sandbox ID."""

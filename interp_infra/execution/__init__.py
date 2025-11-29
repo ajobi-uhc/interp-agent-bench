@@ -3,11 +3,9 @@
 from .notebook_session import (
     NotebookSession,
     create_notebook_session,
-    load_skill,
 )
 
 __all__ = [
     "NotebookSession",
     "create_notebook_session",
-    "load_skill",
 ]

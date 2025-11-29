@@ -15,6 +15,7 @@ class NotebookSession:
     session_id: str
     jupyter_url: str
     sandbox: Sandbox
+    notebook_dir: str = "./outputs"
 
     def exec(self, code: str, hidden: bool = False) -> dict:
         """Execute code in the notebook kernel."""
@@ -47,7 +48,10 @@ class NotebookSession:
                 "type": "stdio",
                 "command": "python",
                 "args": ["-m", "scribe.notebook.notebook_mcp_server"],
-                "env": {"SCRIBE_URL": self.jupyter_url}
+                "env": {
+                    "SCRIBE_URL": self.jupyter_url,
+                    "NOTEBOOK_OUTPUT_DIR": self.notebook_dir
+                }
             }
         }
 
@@ -55,6 +59,7 @@ class NotebookSession:
 def create_notebook_session(
     sandbox: Sandbox,
     name: str = "session",
+    notebook_dir: str = "./outputs",
 ) -> NotebookSession:
     """
     Create a notebook session and load models/repos into kernel.
@@ -89,6 +94,7 @@ def create_notebook_session(
         session_id=session_id,
         jupyter_url=sandbox.jupyter_url,
         sandbox=sandbox,
+        notebook_dir=notebook_dir,
     )
 
     # Load models
@@ -169,10 +175,4 @@ def container_exec(cmd: str) -> str:
     return result.stdout
 '''
 
-    session.exec(code, hidden=True)
-
-
-def load_skill(session: NotebookSession, skill_path: str):
-    """Load a skill (python file) into the kernel."""
-    code = Path(skill_path).read_text()
     session.exec(code, hidden=True)

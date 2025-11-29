@@ -56,7 +56,7 @@ def deploy_from_config(config_path: str) -> Dict[str, Any]:
             "tip": "Check the path is relative to current directory"
         }
 
-    print(f"🚀 Deploying from config: {config_path}")
+    print(f"Deploying from config: {config_path}")
 
     # Load config
     from interp_infra.config.parser import load_config
@@ -70,7 +70,7 @@ def deploy_from_config(config_path: str) -> Dict[str, Any]:
     # Get number of pods from config
     num_pods = getattr(config.harness, 'num_pods', 1)
 
-    print(f"📦 Deploying {num_pods} pod(s)...")
+    print(f"Deploying {num_pods} pod(s)...")
 
     # Deploy each pod and return connection info
     pods = []
@@ -96,9 +96,9 @@ def deploy_from_config(config_path: str) -> Dict[str, Any]:
             "sandbox_id": deployment.sandbox_id
         })
 
-        print(f"   ✅ {pod_id} ready (session: {deployment.session_id})")
+        print(f"   {pod_id} ready (session: {deployment.session_id})")
 
-    print(f"✅ All {num_pods} pod(s) deployed")
+    print(f"All {num_pods} pod(s) deployed")
     print(f"   Workspace: {workspace_root}")
 
     return {

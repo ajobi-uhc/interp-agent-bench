@@ -20,8 +20,8 @@ repo = sandbox.prepare_repo("PalisadeResearch/shutdown_avoidance")
 # Start sandbox
 sandbox.start(name="test-with-repo")
 
-print(f"✓ Sandbox started")
-print(f"✓ Repo at: {repo.local_path}")
+print(f"Sandbox started")
+print(f"Repo at: {repo.local_path}")
 
 # Create session - loads model and sets up repo workspace
 session = create_notebook_session(sandbox, name="repo-test")
@@ -34,9 +34,9 @@ print(f"Workspace exists: {WORKSPACE.exists()}")
 print(f"Files: {list(WORKSPACE.glob('*.py'))[:3]}")
 """)
 
-print("✓ Workspace successfully set up in kernel!")
+print("Workspace successfully set up in kernel!")
 
 # Cleanup
 print("\nCleaning up...")
 sandbox.terminate()
-print("✓ Test complete!")
+print("Test complete!")
