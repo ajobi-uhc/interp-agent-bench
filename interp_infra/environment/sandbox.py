@@ -101,16 +101,34 @@ class Sandbox:
     def start(self, name: str = "sandbox") -> "Sandbox":
         """
         Build image and start the sandbox.
-        
+
         Args:
             name: Name for the Modal app
-            
+
         Returns:
             self for chaining
         """
         print(f"Starting sandbox: {name}")
-        
-        # Build image
+
+        image = self._build_image()
+        self._app = modal.App.lookup(name, create_if_missing=True)
+        self._create_sandbox(image)
+
+        if self.config.docker_in_docker:
+            print("  Starting docker daemon...")
+            self._start_docker_daemon()
+
+        self._download_prepared_models()
+        self._clone_prepared_repos()
+        commit_volumes(self._volumes)
+
+        self._start_services()
+
+        print("  Sandbox ready")
+        return self
+
+    def _build_image(self) -> modal.Image:
+        """Build Modal image with dependencies."""
         print("  Building image...")
         self._image_builder = ModalImageBuilder(
             python_packages=self.config.python_packages,
@@ -120,75 +138,44 @@ class Sandbox:
             execution_mode=self.config.execution_mode,
             notebook_packages=self.config.notebook_packages,
         )
-        image = self._image_builder.build()
-        
-        # Get GPU config
-        gpu = None
-        if self.config.gpu:
-            gpu = f"{self.config.gpu}:{self.config.gpu_count}"
-            print(f"  GPU: {self.config.gpu} x{self.config.gpu_count}")
-        
-        # Create app
-        self._app = modal.App.lookup(name, create_if_missing=True)
-        
-        # Collect secrets
-        secrets = self._collect_secrets()
-        
-        # Prepare sandbox kwargs
-        sandbox_kwargs = {
-            "image": image,
-            "timeout": self.config.timeout,
-            "app": self._app,
-        }
-        
+        return self._image_builder.build()
+
+    def _create_sandbox(self, image: modal.Image):
+        """Create and configure Modal sandbox."""
+        gpu = f"{self.config.gpu}:{self.config.gpu_count}" if self.config.gpu else None
         if gpu:
-            sandbox_kwargs["gpu"] = gpu
-            
+            print(f"  GPU: {self.config.gpu} x{self.config.gpu_count}")
+
+        secrets = self._collect_secrets()
+
+        kwargs = {"image": image, "timeout": self.config.timeout, "app": self._app}
+        if gpu:
+            kwargs["gpu"] = gpu
         if secrets:
-            sandbox_kwargs["secrets"] = secrets
-        
-        # Add environment variables
+            kwargs["secrets"] = secrets
         if self.config.env:
-            sandbox_kwargs["env"] = self.config.env
-        
-        # Add volumes
+            kwargs["env"] = self.config.env
         if self._volumes:
-            sandbox_kwargs["volumes"] = self._volumes
+            kwargs["volumes"] = self._volumes
             print(f"  Volumes: {len(self._volumes)}")
-            
-        # Add docker options if needed
         if self.config.docker_in_docker:
-            sandbox_kwargs["experimental_options"] = {"enable_docker": True}
+            kwargs["experimental_options"] = {"enable_docker": True}
 
-        # Add encrypted ports based on execution mode and debug flag
-        encrypted_ports = list(self.config.encrypted_ports)  # Start with config
+        # Encrypted ports
+        ports = list(self.config.encrypted_ports)
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
-            encrypted_ports.append(self.config.jupyter_port)
+            ports.append(self.config.jupyter_port)
         if self.config.debug:
-            encrypted_ports.append(self.config.debug_port)
-        if encrypted_ports:
-            sandbox_kwargs["encrypted_ports"] = encrypted_ports
+            ports.append(self.config.debug_port)
+        if ports:
+            kwargs["encrypted_ports"] = ports
 
-        # Create sandbox
         print("  Creating sandbox...")
-        self._sandbox = modal.Sandbox.create(**sandbox_kwargs)
+        self._sandbox = modal.Sandbox.create(**kwargs)
         print(f"  Sandbox ID: {self._sandbox.object_id}")
-        
-        # Start docker daemon if needed
-        if self.config.docker_in_docker:
-            print("  Starting docker daemon...")
-            self._start_docker_daemon()
-        
-        # Download any models that were prepared before start
-        self._download_prepared_models()
 
-        # Clone any repos that were prepared before start
-        self._clone_prepared_repos()
-
-        # Commit volume changes after all downloads
-        commit_volumes(self._volumes)
-        
-        # Start services based on execution mode
+    def _start_services(self):
+        """Start execution mode services."""
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
             print("  Starting jupyter server...")
             self._start_jupyter()
@@ -201,7 +188,6 @@ class Sandbox:
         elif self.config.execution_mode is None:
             print("  Bare mode - no services started")
 
-        # Start code-server if debug flag is set
         if self.config.debug:
             print("  Debug mode: Starting code-server...")
             self._start_code_server()
@@ -210,54 +196,28 @@ class Sandbox:
             self._wait_for_code_server()
             print(f"  Code Server URL: {self._code_server_url}")
 
-        print("  Sandbox ready")
-        return self
-    
-    def exec(self, cmd: str) -> str:
-        """
-        Execute a shell command in the sandbox.
-        
-        Args:
-            cmd: Shell command to run
-            
-        Returns:
-            stdout from command
-        """
+    def _run(self, *args) -> str:
+        """Run command and return stdout."""
         if not self._sandbox:
             raise RuntimeError("Sandbox not started. Call start() first.")
-            
-        p = self._sandbox.exec("bash", "-c", cmd)
+
+        p = self._sandbox.exec(*args)
         stdout = p.stdout.read()
         p.wait()
-        
+
         if p.returncode != 0:
             stderr = p.stderr.read()
             raise RuntimeError(f"Command failed (exit {p.returncode}): {stderr}")
-            
+
         return stdout
-    
+
+    def exec(self, cmd: str) -> str:
+        """Execute a shell command in the sandbox."""
+        return self._run("bash", "-c", cmd)
+
     def exec_python(self, code: str) -> str:
-        """
-        Execute Python code in the sandbox.
-        
-        Args:
-            code: Python code to run
-            
-        Returns:
-            stdout from execution
-        """
-        if not self._sandbox:
-            raise RuntimeError("Sandbox not started. Call start() first.")
-            
-        p = self._sandbox.exec("python", "-c", code)
-        stdout = p.stdout.read()
-        p.wait()
-        
-        if p.returncode != 0:
-            stderr = p.stderr.read()
-            raise RuntimeError(f"Python execution failed (exit {p.returncode}): {stderr}")
-            
-        return stdout
+        """Execute Python code in the sandbox."""
+        return self._run("python", "-c", code)
     
     def prepare_model(
         self, 
@@ -381,34 +341,30 @@ class Sandbox:
     def _collect_secrets(self) -> list[modal.Secret]:
         """Collect Modal secrets."""
         secrets = []
-        
+
         # Named secrets from config
         for secret_name in self.config.secrets:
             try:
                 secrets.append(modal.Secret.from_name(secret_name))
-            except Exception:
+            except modal.exception.NotFoundError:
                 print(f"  Warning: Secret '{secret_name}' not found")
-        
-        # Try HF secret if configured
+
+        # HF secret (optional)
         if self.config.hf_secret_name:
             try:
                 secrets.append(modal.Secret.from_name(self.config.hf_secret_name))
-            except Exception:
+            except modal.exception.NotFoundError:
                 pass
-        
-        # Modal credentials for nested sandboxes (needed for IsolatedSandbox)
+
+        # Modal credentials for nested sandboxes
         if os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"):
             secrets.append(modal.Secret.from_dict({
                 "MODAL_TOKEN_ID": os.environ["MODAL_TOKEN_ID"],
                 "MODAL_TOKEN_SECRET": os.environ["MODAL_TOKEN_SECRET"],
             }))
 
-        # Pass configured API keys from local environment
-        api_keys = {}
-        for key in self.config.api_key_names:
-            if os.getenv(key):
-                api_keys[key] = os.environ[key]
-
+        # API keys from environment
+        api_keys = {key: os.environ[key] for key in self.config.api_key_names if os.getenv(key)}
         if api_keys:
             secrets.append(modal.Secret.from_dict(api_keys))
 
@@ -417,22 +373,20 @@ class Sandbox:
     def _start_docker_daemon(self):
         """Start docker daemon in background."""
         dockerd_script = self._get_dockerd_script()
-        
-        # Write script to sandbox
+
+        # Write and execute script
         self._sandbox.open("/start-dockerd.sh", "w").write(dockerd_script)
         self.exec("chmod +x /start-dockerd.sh")
-        
-        # Run in background
         self.exec("nohup /start-dockerd.sh > /var/log/dockerd.log 2>&1 &")
-        
+
         # Wait for docker to be ready
-        for i in range(30):
+        for _ in range(30):
             try:
                 self.exec("docker info > /dev/null 2>&1")
                 return
-            except Exception:
+            except RuntimeError:
                 time.sleep(1)
-        
+
         raise RuntimeError("Docker daemon failed to start")
     
     def _get_dockerd_script(self) -> str:
@@ -481,43 +435,32 @@ app.start()
         # Escape for shell
         escaped_script = jupyter_script.replace('"', '\\"')
         self.exec(f'nohup python -c "{escaped_script}" > /var/log/jupyter.log 2>&1 &')
-    
-    def _wait_for_jupyter(self, max_retries: int = 100, retry_delay: float = 2.0):
-        """Wait for jupyter server to be ready."""
-        for i in range(max_retries):
+
+    def _wait_for_service(self, url: str, service_name: str, max_retries: int = 100, retry_delay: float = 2.0):
+        """Wait for HTTP service to be ready."""
+        for _ in range(max_retries):
             try:
-                response = requests.get(f"{self._jupyter_url}/api/scribe/health", timeout=5)
+                response = requests.get(url, timeout=5)
                 if response.status_code == 200:
                     return
-            except Exception:
+            except (requests.RequestException, ConnectionError):
                 pass
             time.sleep(retry_delay)
+        print(f"  Warning: {service_name} may not be fully ready")
 
-        print("  Warning: Jupyter may not be fully ready")
+    def _wait_for_jupyter(self):
+        """Wait for jupyter server to be ready."""
+        self._wait_for_service(f"{self._jupyter_url}/api/scribe/health", "Jupyter")
 
     def _start_code_server(self):
         """Start code-server (VS Code in browser)."""
-        # Install code-server
-        install_script = """
-curl -fsSL https://code-server.dev/install.sh | sh > /var/log/code-server-install.log 2>&1
-"""
+        install_script = "curl -fsSL https://code-server.dev/install.sh | sh > /var/log/code-server-install.log 2>&1"
         self.exec(install_script)
-
-        # Start code-server
         self.exec(f'nohup code-server --bind-addr 0.0.0.0:{self.config.debug_port} --auth none /workspace > /var/log/code-server.log 2>&1 &')
 
-    def _wait_for_code_server(self, max_retries: int = 100, retry_delay: float = 2.0):
+    def _wait_for_code_server(self):
         """Wait for code-server to be ready."""
-        for i in range(max_retries):
-            try:
-                response = requests.get(f"{self._code_server_url}/healthz", timeout=5)
-                if response.status_code == 200:
-                    return
-            except Exception:
-                pass
-            time.sleep(retry_delay)
-
-        print("  Warning: Code-server may not be fully ready")
+        self._wait_for_service(f"{self._code_server_url}/healthz", "Code-server")
     
     def _download_prepared_models(self):
         """Download all prepared models."""

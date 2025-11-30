@@ -2,15 +2,16 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
+
+from .session_base import SessionBase
 
 if TYPE_CHECKING:
-    from ..environment.scoped_sandbox import Proxy
     from ..extension import Extension
 
 
 @dataclass
-class LocalSession:
+class LocalSession(SessionBase):
     """
     A local session for running agents with MCP tools.
 
@@ -25,42 +26,12 @@ class LocalSession:
     """
     session_id: str
     workspace: Path
+    _namespace: dict = field(default_factory=dict, init=False, repr=False)
 
-    # Configuration accumulators
-    _mcp_endpoints: list[dict] = field(default_factory=list, init=False)
-    _prompts: list[str] = field(default_factory=list, init=False)
-    _namespace: dict = field(default_factory=dict, init=False)
-
-    def add(self, item: Union["Proxy", "Extension"]):
-        """
-        Add extension or proxy to the session.
-
-        - Extension: Code executed locally in namespace, docs added to prompt
-        - Proxy: Added as MCP tool (from ScopedSandbox)
-
-        Args:
-            item: Extension (local code) or Proxy (from ScopedSandbox)
-
-        Examples:
-            session.add(proxy)        # Adds autorater as MCP tool
-            session.add(extension)    # Executes code locally
-        """
-        from ..environment.scoped_sandbox import Proxy
-        from ..extension import Extension
-
-        if isinstance(item, Proxy):
-            # Proxy → MCP tool (ScopedSandbox interface)
-            self._mcp_endpoints.append(item.as_mcp_config())
-
-        elif isinstance(item, Extension):
-            # Extension → Execute code locally + docs to prompt
-            if item.code:
-                exec(item.code, self._namespace)
-            if item.docs:
-                self._prompts.append(item.docs)
-
-        else:
-            raise TypeError(f"Expected Proxy or Extension, got {type(item)}")
+    def _execute_extension(self, extension: "Extension"):
+        """Execute extension code in local namespace."""
+        if extension.code:
+            exec(extension.code, self._namespace)
 
     @property
     def mcp_config(self) -> dict:
@@ -79,15 +50,12 @@ class LocalSession:
 
     @property
     def system_prompt(self) -> str:
-        """Accumulated system prompt from extensions."""
-        prompts = []
-
-        # Add workspace info
-        prompts.append(f"You have a local workspace directory at: {self.workspace.absolute()}\nYou can read/write files in this directory using your built-in file tools.")
-
-        # Add extension prompts
+        """Accumulated system prompt from extensions with workspace info."""
+        prompts = [
+            f"You have a local workspace directory at: {self.workspace.absolute()}\n"
+            "You can read/write files in this directory using your built-in file tools."
+        ]
         prompts.extend(self._prompts)
-
         return "\n\n".join(prompts)
 
 

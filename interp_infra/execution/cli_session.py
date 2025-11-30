@@ -1,19 +1,19 @@
 """Simple CLI session management for shell-based interactions."""
 
-from dataclasses import dataclass, field
-from typing import Optional, TYPE_CHECKING, Union
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ..environment.sandbox import Sandbox
 from ..environment.handles import ModelHandle, RepoHandle
+from .session_base import SessionBase
+from .model_loader import ModelLoader
 
 if TYPE_CHECKING:
-    from ..harness.skill import Skill
-    from ..environment.scoped_sandbox import Proxy
     from ..extension import Extension
 
 
 @dataclass
-class CLISession:
+class CLISession(SessionBase):
     """
     A CLI session for running shell commands.
 
@@ -23,10 +23,6 @@ class CLISession:
     """
     sandbox: Sandbox
     session_id: str
-
-    # Configuration accumulators
-    _mcp_endpoints: list[dict] = field(default_factory=list, init=False)
-    _prompts: list[str] = field(default_factory=list, init=False)
 
     def exec(self, cmd: str) -> str:
         """Execute a shell command in the sandbox.
@@ -56,62 +52,10 @@ class CLISession:
         """
         return self.sandbox.exec_python(code)
 
-    def load_skill(self, skill: "Skill") -> str:
-        """
-        Load skill into CLI session.
-
-        Copies skill directory to /skills if path exists,
-        writes code.py if present, returns prompt for agent.
-        """
-        # Copy skill directory if it exists
-        if skill.path:
-            skill_dir = f"/skills/{skill.name}"
-            self.exec(f"mkdir -p {skill_dir}")
-
-            # Copy all files from skill directory
-            for file in skill.path.iterdir():
-                if file.is_file():
-                    content = file.read_text()
-                    # Escape content for heredoc
-                    self.sandbox.modal_sandbox.open(f"{skill_dir}/{file.name}", "w").write(content)
-
-        # Write code.py if present
-        elif skill.code:
-            self.exec(f"mkdir -p /skills/{skill.name}")
-            self.sandbox.modal_sandbox.open(f"/skills/{skill.name}/code.py", "w").write(skill.code)
-
-        return skill.prompt
-
-    def add(self, item: Union["Proxy", "Extension"]):
-        """
-        Add extension or proxy to the session.
-
-        - Extension: Code executed via exec_python, docs added to prompt
-        - Proxy: Added as MCP tool (only way to use ScopedSandbox)
-
-        Args:
-            item: Extension (local code) or Proxy (from ScopedSandbox)
-
-        Examples:
-            session.add(steering_extension)  # Code runs via exec_python
-            session.add(target_proxy)        # chat() becomes MCP tool
-        """
-        from ..environment.scoped_sandbox import Proxy
-        from ..extension import Extension
-
-        if isinstance(item, Proxy):
-            # Proxy → MCP tool (ScopedSandbox interface)
-            self._mcp_endpoints.append(item.as_mcp_config())
-
-        elif isinstance(item, Extension):
-            # Extension → Execute code + docs to prompt
-            if item.code:
-                self.exec_python(item.code)
-            if item.docs:
-                self._prompts.append(item.docs)
-
-        else:
-            raise TypeError(f"Expected Proxy or Extension, got {type(item)}")
+    def _execute_extension(self, extension: "Extension"):
+        """Execute extension code via exec_python."""
+        if extension.code:
+            self.exec_python(extension.code)
 
     @property
     def mcp_config(self) -> dict:
@@ -119,33 +63,26 @@ class CLISession:
         MCP configuration for connecting agents.
 
         Includes:
-        - CLI tools (run_command, run_python, etc.)
+        - CLI tools (run_command, run_python, read_file, write_file, list_files)
         - Any added proxies/extensions exposed as MCP
         """
-        # Start with CLI's built-in MCP
+        # CLI MCP server exposes sandbox exec methods as tools
         config = {
             "cli": {
                 "type": "stdio",
                 "command": "python",
-                "args": ["-m", "interp_infra.execution.cli_mcp_server"],
+                "args": ["-m", "interp_infra.mcps.cli"],
                 "env": {
                     "SANDBOX_ID": self.sandbox.sandbox_id,
                 }
             }
         }
 
-        # Add any additional MCP endpoints
+        # Add proxy/extension MCP endpoints
         for endpoint in self._mcp_endpoints:
             config.update(endpoint)
 
         return config
-
-    @property
-    def system_prompt(self) -> str:
-        """Accumulated system prompt from extensions."""
-        if not self._prompts:
-            return ""
-        return "\n\n".join(self._prompts)
 
 
 def create_cli_session(
@@ -188,64 +125,8 @@ def _prepare_model(session: CLISession, handle: ModelHandle):
     """Make model available in the environment."""
     print(f"  Preparing model: {'<hidden>' if handle.hidden else handle.name}")
 
-    # For CLI mode, models are already downloaded to volumes by sandbox.start()
-    # Create a Python helper script that the agent can use to load the model
-
-    if handle.is_peft:
-        load_script = f'''#!/usr/bin/env python3
-"""Load model: {handle.name if not handle.hidden else '<hidden>'}"""
-
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
-
-def load_model():
-    """Load the model and tokenizer."""
-    _base = AutoModelForCausalLM.from_pretrained(
-        "{handle.base_model_path}",
-        device_map="auto",
-        torch_dtype="auto",
-    )
-    model = PeftModel.from_pretrained(_base, "{handle.volume_path}")
-    tokenizer = AutoTokenizer.from_pretrained("{handle.base_model_path}")
-    del _base
-    return model, tokenizer
-
-if __name__ == "__main__":
-    model, tokenizer = load_model()
-    print(f"Model loaded: {{type(model).__name__}}")
-    print(f"Tokenizer: {{tokenizer.__class__.__name__}}")
-
-# Model path: {handle.volume_path}
-# Base model path: {handle.base_model_path}
-'''
-    else:
-        load_script = f'''#!/usr/bin/env python3
-"""Load model: {handle.name if not handle.hidden else '<hidden>'}"""
-
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-def load_model():
-    """Load the model and tokenizer."""
-    model = AutoModelForCausalLM.from_pretrained(
-        "{handle.volume_path}",
-        device_map="auto",
-        torch_dtype="auto",
-    )
-    tokenizer = AutoTokenizer.from_pretrained("{handle.volume_path}")
-    return model, tokenizer
-
-if __name__ == "__main__":
-    model, tokenizer = load_model()
-    print(f"Model loaded: {{type(model).__name__}}")
-    print(f"Tokenizer: {{tokenizer.__class__.__name__}}")
-
-# Model path: {handle.volume_path}
-'''
-
-    if handle.hidden:
-        load_script += '''
-# Note: Model name is hidden for evaluation purposes
-'''
+    # Generate load script for CLI mode
+    load_script = ModelLoader.generate_code(handle, target="script")
 
     # Write load script to /workspace
     script_name = "load_model.py" if handle.hidden else f"load_{handle.name.replace('/', '_').replace('.', '_')}.py"

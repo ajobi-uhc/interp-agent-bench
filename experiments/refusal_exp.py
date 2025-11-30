@@ -72,10 +72,10 @@ async def main():
     # Load extensions
     print("\nLoading extensions...")
     extensions = [
-        Extension.from_file("skills/gpu-environment.md"),
-        Extension.from_file("skills/research-methodology.md"),
-        Extension.from_file("skills/extract-activations.md"),
-        Extension.from_file("skills/steering-hook.md"),
+        Extension.from_file("experiments/skills/gpu-environment.md"),
+        Extension.from_file("experiments/skills/research-methodology.md"),
+        Extension.from_file("experiments/skills/extract-activations.md"),
+        Extension.from_file("experiments/skills/steering-hook.md"),
     ]
 
     for ext in extensions:

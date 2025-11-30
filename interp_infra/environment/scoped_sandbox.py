@@ -73,7 +73,7 @@ def {fn}(*args, **kwargs):
             name: {
                 "type": "stdio",
                 "command": "python",
-                "args": ["-m", "interp_infra.mcp.interface_mcp_server"],
+                "args": ["-m", "interp_infra.mcps.proxy"],
                 "env": {
                     "RPC_URL": self.url,
                     "FUNCTIONS": json.dumps(self.functions)
@@ -187,12 +187,15 @@ class ScopedSandbox(Sandbox):
     def _start_rpc_server(self):
         """Start RPC server with user code."""
         print("  Starting RPC server...")
-        server_code = self._build_rpc_server(self._serve_file_code)
-        
-        with self._sandbox.open("/root/rpc_server.py", "w") as f:
-            f.write(server_code)
-        
-        self.exec("nohup python /root/rpc_server.py > /var/log/rpc.log 2>&1 &")
+
+        # Write user code
+        with self._sandbox.open("/root/user_code.py", "w") as f:
+            f.write(self._serve_file_code)
+
+        # Use the proper RPC server module
+        self.exec(
+            f"nohup python -m interp_infra.environment.rpc_server {self._rpc_port} /root/user_code.py > /var/log/rpc.log 2>&1 &"
+        )
         self._wait_for_port(self._rpc_port)
     
     def _start_repo_server(self):
@@ -201,61 +204,27 @@ class ScopedSandbox(Sandbox):
         url = cfg["url"] if cfg["url"].startswith("http") else f"https://github.com/{cfg['url']}"
         repo_name = url.split("/")[-1].replace(".git", "")
         repo_path = f"/workspace/{repo_name}"
-        
+
         print(f"  Cloning {repo_name}...")
         self.exec(f"git clone {url} {repo_path}")
-        
+
         if cfg["install"]:
             print(f"  Installing...")
             self.exec(f"cd {repo_path} && {cfg['install']}")
-        
+
         if cfg["run"]:
             print(f"  Running: {cfg['run']}")
             self.exec(f"cd {repo_path} && nohup {cfg['run']} > /var/log/server.log 2>&1 &")
         else:
+            # Create user code that imports from repo
             code = f'import sys; sys.path.insert(0, "{repo_path}"); exec(open("{repo_path}/{cfg["interface"]}").read())'
-            server_code = self._build_rpc_server(code)
-            with self._sandbox.open("/root/rpc_server.py", "w") as f:
-                f.write(server_code)
-            self.exec("nohup python /root/rpc_server.py > /var/log/rpc.log 2>&1 &")
-        
+            with self._sandbox.open("/root/user_code.py", "w") as f:
+                f.write(code)
+            self.exec(
+                f"nohup python -m interp_infra.environment.rpc_server {self._rpc_port} /root/user_code.py > /var/log/rpc.log 2>&1 &"
+            )
+
         self._wait_for_port(self._rpc_port)
-    
-    def _build_rpc_server(self, user_code: str) -> str:
-        """Build RPC server script."""
-        return f'''
-import json, traceback
-from http.server import HTTPServer, BaseHTTPRequestHandler
-
-{user_code}
-
-_functions = {{n: o for n, o in globals().items() if callable(o) and not n.startswith("_") and not isinstance(o, type) and getattr(o, "__module__", None) == "__main__"}}
-print(f"Functions: {{list(_functions.keys())}}")
-
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({{"functions": list(_functions.keys())}}).encode())
-    
-    def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        try:
-            result = _functions[body["fn"]](*body.get("args", []), **body.get("kwargs", {{}}))
-            resp = {{"ok": True, "result": result}}
-        except Exception as e:
-            resp = {{"ok": False, "error": str(e), "traceback": traceback.format_exc()}}
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps(resp).encode())
-    
-    def log_message(self, *a): pass
-
-print(f"RPC on {self._rpc_port}")
-HTTPServer(("0.0.0.0", {self._rpc_port}), Handler).serve_forever()
-'''
     
     def create_proxy(self, port: int, functions: list[str] = None) -> Proxy:
         """Create proxy to HTTP endpoint."""
