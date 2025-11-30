@@ -50,6 +50,16 @@ class NotebookSession(SessionBase):
 
         return result
 
+    def exec_file(self, file_path: str, **kwargs) -> dict:
+        """Execute a Python file in the notebook kernel."""
+        from pathlib import Path
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        code = path.read_text()
+        return self.exec(code, **kwargs)
+
     def _execute_extension(self, extension: "Extension"):
         """Execute extension code in notebook kernel."""
         if extension.code:
@@ -139,7 +149,8 @@ def create_notebook_session(
 
 def _attach_model(session: NotebookSession, handle: ModelHandle):
     """Load model into kernel namespace."""
-    print(f"  Loading model: {'<hidden>' if handle.hidden else handle.name}")
+    var_info = f" as '{handle.var_name}'" if handle.var_name != "model" else ""
+    print(f"  Loading model{var_info}: {'<hidden>' if handle.hidden else handle.name}")
     code = ModelLoader.generate_code(handle, target="namespace")
     session.exec(code, hidden=True)
 

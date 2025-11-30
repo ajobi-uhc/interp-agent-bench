@@ -48,13 +48,7 @@ class RPCHandler(BaseHTTPRequestHandler):
 
 def extract_functions(namespace: Dict[str, Any]) -> Dict[str, Callable]:
     """
-    Extract callable functions from namespace.
-
-    Filters for:
-    - Callable objects
-    - Not starting with underscore
-    - Not type objects (classes)
-    - Defined in __main__ module
+    Extract functions marked with @expose decorator.
 
     Args:
         namespace: Global namespace dict
@@ -62,15 +56,13 @@ def extract_functions(namespace: Dict[str, Any]) -> Dict[str, Callable]:
     Returns:
         Dict of function name to function object
     """
-    functions = {}
-    for name, obj in namespace.items():
-        if (
-            callable(obj)
-            and not name.startswith("_")
-            and not isinstance(obj, type)
-            and getattr(obj, "__module__", None) == "__main__"
-        ):
-            functions[name] = obj
+    from interp_infra.environment.interface import get_exposed_functions
+    functions = get_exposed_functions()
+
+    if not functions:
+        raise RuntimeError("No functions exposed with @expose decorator")
+
+    print(f"Exposed functions: {list(functions.keys())}", file=sys.stderr)
     return functions
 
 

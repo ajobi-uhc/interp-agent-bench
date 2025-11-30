@@ -18,6 +18,9 @@ class ModelLoader:
         Returns:
             Python code string to load the model
         """
+        model_var = handle.var_name
+        tokenizer_var = f"{handle.var_name}_tokenizer" if handle.var_name != "model" else "tokenizer"
+
         if handle.is_peft:
             code = f'''from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
@@ -27,27 +30,27 @@ _base = AutoModelForCausalLM.from_pretrained(
     device_map="auto",
     torch_dtype="auto",
 )
-model = PeftModel.from_pretrained(_base, "{handle.volume_path}")
-tokenizer = AutoTokenizer.from_pretrained("{handle.base_model_path}")
+{model_var} = PeftModel.from_pretrained(_base, "{handle.volume_path}")
+{tokenizer_var} = AutoTokenizer.from_pretrained("{handle.base_model_path}")
 del _base
 '''
         else:
             code = f'''from transformers import AutoModelForCausalLM, AutoTokenizer
 
-model = AutoModelForCausalLM.from_pretrained(
+{model_var} = AutoModelForCausalLM.from_pretrained(
     "{handle.volume_path}",
     device_map="auto",
     torch_dtype="auto",
 )
-tokenizer = AutoTokenizer.from_pretrained("{handle.volume_path}")
+{tokenizer_var} = AutoTokenizer.from_pretrained("{handle.volume_path}")
 '''
 
         if handle.hidden:
-            code += '''
-if hasattr(model, "config"):
-    model.config.name_or_path = "model"
-    if hasattr(model.config, "_name_or_path"):
-        model.config._name_or_path = "model"
+            code += f'''
+if hasattr({model_var}, "config"):
+    {model_var}.config.name_or_path = "model"
+    if hasattr({model_var}.config, "_name_or_path"):
+        {model_var}.config._name_or_path = "model"
 '''
 
         if target == "script":

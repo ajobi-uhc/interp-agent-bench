@@ -1,6 +1,6 @@
 """CLI session with model loading and command execution."""
 
-from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode
+from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
 from interp_infra.execution import create_cli_session
 from conftest import auto_cleanup
 
@@ -8,10 +8,10 @@ config = SandboxConfig(
     python_packages=["torch", "transformers"],
     gpu="H100",
     execution_mode=ExecutionMode.CLI,
+    models=[ModelConfig(name="google/gemma-2-9b", hidden=True)],
 )
 
 sandbox = Sandbox(config)
-sandbox.prepare_model("google/gemma-2-9b", hidden=True)
 
 with auto_cleanup(sandbox):
     sandbox.start(name="cli")

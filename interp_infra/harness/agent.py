@@ -21,7 +21,6 @@ async def run_agent(
     task: str,
     provider: Provider = "claude",
     model: Optional[str] = None,
-    verbose: bool = False,
 ) -> AsyncIterator[dict]:
     """
     Run an agent with MCP tools and system prompt.
@@ -35,7 +34,6 @@ async def run_agent(
         task: What the agent should do
         provider: "claude", "gemini", or "openai"
         model: Override default model for provider
-        verbose: Print debug info
 
     Yields:
         Agent messages (dict format)
@@ -64,7 +62,6 @@ async def run_agent(
             system_prompt=system_prompt,
             task=task,
             model=model,
-            verbose=verbose,
         ):
             yield message
 
@@ -74,7 +71,6 @@ async def run_agent(
             system_prompt=system_prompt,
             task=task,
             model=model,
-            verbose=verbose,
         ):
             yield message
 
@@ -84,7 +80,6 @@ async def run_agent(
             system_prompt=system_prompt,
             task=task,
             model=model,
-            verbose=verbose,
         ):
             yield message
 

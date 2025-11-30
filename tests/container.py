@@ -1,6 +1,6 @@
 """Test container building from repo with Dockerfile."""
 
-from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode
+from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode, RepoConfig
 from interp_infra.execution import create_notebook_session
 from conftest import auto_cleanup
 
@@ -9,21 +9,21 @@ config = SandboxConfig(
     gpu="H100",
     execution_mode=ExecutionMode.NOTEBOOK,
     docker_in_docker=True,  # Required for container building
+    repos=[
+        RepoConfig(
+            url="https://github.com/dockersamples/python-flask-sample",
+            dockerfile="Dockerfile",
+        )
+    ],
 )
 
 sandbox = Sandbox(config)
-
-# Prepare a repo with a Dockerfile
-# Using a simple test repo or we can create one inline
-repo_handle = sandbox.prepare_repo(
-    url="https://github.com/dockersamples/python-flask-sample",
-    dockerfile="Dockerfile",
-)
 
 with auto_cleanup(sandbox):
     sandbox.start(name="container-test")
 
     # Build and start the container
+    repo_handle = sandbox._repo_handles[0]
     sandbox.start_container(repo_handle)
 
     # Verify container is running

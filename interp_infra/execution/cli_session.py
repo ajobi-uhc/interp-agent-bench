@@ -52,6 +52,24 @@ class CLISession(SessionBase):
         """
         return self.sandbox.exec_python(code)
 
+    def exec_file(self, file_path: str, **kwargs) -> str:
+        """Execute a Python file in the sandbox.
+
+        Args:
+            file_path: Path to Python file (absolute or relative to cwd)
+            **kwargs: Ignored (for API compatibility)
+
+        Returns:
+            stdout from execution
+        """
+        from pathlib import Path
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        code = path.read_text()
+        return self.exec_python(code)
+
     def _execute_extension(self, extension: "Extension"):
         """Execute extension code via exec_python."""
         if extension.code:

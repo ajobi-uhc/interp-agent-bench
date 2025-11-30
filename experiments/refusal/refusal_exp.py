@@ -6,9 +6,9 @@ import signal
 from pathlib import Path
 
 # Add parent directory to path so we can import interp_infra
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode
+from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
 from interp_infra.execution import create_notebook_session
 from interp_infra.harness import run_agent
 from interp_infra import Extension
@@ -31,8 +31,9 @@ async def main():
     global sandbox_instance
 
     # Load task and system prompt
-    task_text = Path("experiments/task.md").read_text()
-    system_prompt = Path("experiments/base_instructions.md").read_text()
+    script_dir = Path(__file__).parent
+    task_text = (script_dir / "task.md").read_text()
+    system_prompt = (script_dir.parent / "base_instructions.md").read_text()
 
     # Set up signal handler for Ctrl+C
     signal.signal(signal.SIGINT, cleanup_handler)
@@ -44,15 +45,10 @@ async def main():
             gpu="A100",
             gpu_count=1,
             execution_mode=ExecutionMode.NOTEBOOK,
+            models=[ModelConfig(name="google/gemma-2b", hidden=False)],
         )
     )
     sandbox_instance = sandbox
-
-    # Prepare model
-    sandbox.prepare_model(
-        "google/gemma-2b",
-        hidden=False,
-    )
 
     # Start sandbox
     sandbox.start(name="refusal-single-dir")
@@ -61,7 +57,7 @@ async def main():
     print(f"Jupyter: {sandbox.jupyter_url}")
 
     # Create notebook session (loads model into kernel)
-    session = create_notebook_session(sandbox, name="driver")
+    session = create_notebook_session(sandbox, name="driver", notebook_dir="./outputs/refusal")
 
     # Inject session info into system prompt
     system_prompt = system_prompt.format(
@@ -71,22 +67,32 @@ async def main():
 
     # Load extensions
     print("\nLoading extensions...")
+    skills_dir = script_dir.parent / "skills"
     extensions = [
-        Extension.from_file("experiments/skills/gpu-environment.md"),
-        Extension.from_file("experiments/skills/research-methodology.md"),
-        Extension.from_file("experiments/skills/extract-activations.md"),
-        Extension.from_file("experiments/skills/steering-hook.md"),
+        Extension.from_dir(skills_dir / "gpu-environment"),
+        Extension.from_dir(skills_dir / "research-methodology"),
+        Extension.from_dir(skills_dir / "extract-activations"),
+        Extension.from_dir(skills_dir / "steering-hook"),
     ]
 
     for ext in extensions:
         session.add(ext)
+
+    # Save prompts to outputs directory
+    outputs_dir = Path("./outputs/refusal")
+    outputs_dir.mkdir(exist_ok=True)
+
+    full_system_prompt = system_prompt + "\n\n" + session.system_prompt
+    (outputs_dir / "system_prompt.md").write_text(full_system_prompt)
+    (outputs_dir / "task.md").write_text(task_text)
+    print(f"\nSaved prompts to {outputs_dir}/")
 
     # Run agent
     print("\nRunning agent...\n")
     try:
         async for message in run_agent(
             mcp_config=session.mcp_config,
-            system_prompt=system_prompt + "\n\n" + session.system_prompt,
+            system_prompt=full_system_prompt,
             task=task_text,
             provider="claude",
             verbose=True,

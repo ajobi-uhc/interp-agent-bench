@@ -9,6 +9,7 @@ class ModelHandle:
     """Handle to a prepared model."""
     name: str
     volume_path: str
+    var_name: str = "model"  # Variable name in kernel namespace
     hidden: bool = False
     is_peft: bool = False
     base_model: Optional[str] = None

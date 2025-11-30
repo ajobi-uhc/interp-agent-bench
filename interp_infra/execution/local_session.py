@@ -33,6 +33,17 @@ class LocalSession(SessionBase):
         if extension.code:
             exec(extension.code, self._namespace)
 
+    def exec_file(self, file_path: str, **kwargs):
+        """
+        Not supported for LocalSession.
+
+        LocalSession runs entirely on the local machine - use regular Python imports instead.
+        """
+        raise NotImplementedError(
+            "exec_file() is not supported for LocalSession. "
+            "LocalSession runs locally - use regular Python imports instead."
+        )
+
     @property
     def mcp_config(self) -> dict:
         """

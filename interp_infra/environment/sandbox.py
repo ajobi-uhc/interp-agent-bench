@@ -26,17 +26,42 @@ class ExecutionMode(Enum):
 
 
 @dataclass
+class ModelConfig:
+    """Configuration for a model to prepare."""
+    name: str
+    var_name: str = "model"
+    hidden: bool = False
+    is_peft: bool = False
+    base_model: Optional[str] = None
+
+
+@dataclass
+class RepoConfig:
+    """Configuration for a repository to clone."""
+    url: str
+    dockerfile: Optional[str] = None
+    install: str = False
+
+
+@dataclass
 class SandboxConfig:
     """Configuration for a sandbox."""
+    # Packages
     python_packages: list[str] = field(default_factory=list)
     system_packages: list[str] = field(default_factory=list)
     python_version: str = "3.11"
+
+    # Hardware
     gpu: Optional[str] = None  # e.g. "H100", "A100"
     gpu_count: int = 1
+
+    # Features
     docker_in_docker: bool = False
     execution_mode: Optional[ExecutionMode] = ExecutionMode.CLI
     debug: bool = False  # Start code-server for debugging
     timeout: int = 3600 * 24  # 24 hours
+
+    # Secrets and environment
     secrets: list[str] = field(default_factory=list)  # named secrets
     env: dict[str, str] = field(default_factory=dict)
     encrypted_ports: list[int] = field(default_factory=list)  # Additional ports to expose
@@ -66,6 +91,18 @@ class SandboxConfig:
         "matplotlib", "numpy", "seaborn", "datasets"
     ])
 
+    # Models to prepare (download to volumes)
+    models: list[ModelConfig] = field(default_factory=list)
+
+    # Repositories to clone
+    repos: list[RepoConfig] = field(default_factory=list)
+
+    # Local files to add to image [(local_path, remote_path)]
+    local_files: list[tuple[str, str]] = field(default_factory=list)
+
+    # Local directories to add to image [(local_path, remote_path)]
+    local_dirs: list[tuple[str, str]] = field(default_factory=list)
+
 
 class Sandbox:
     """
@@ -82,9 +119,14 @@ class Sandbox:
 
         sandbox = Sandbox(config)
         model = sandbox.prepare_model("google/gemma-9b")
+        # Or prepare multiple models at once:
+        # models = sandbox.prepare_models({
+        #     "google/gemma-2-2b-it": {"hidden": False},
+        #     "google/gemma-2-2b": {},
+        # })
         sandbox.start(name="my-experiment")
 
-        # model is now downloaded to volume, sandbox is running
+        # models are now downloaded to volume, sandbox is running
     """
     
     def __init__(self, config: SandboxConfig):
@@ -109,6 +151,12 @@ class Sandbox:
             self for chaining
         """
         print(f"Starting sandbox: {name}")
+
+        # Prepare models from config
+        self._prepare_models()
+
+        # Prepare repos from config
+        self._prepare_repos()
 
         image = self._build_image()
         self._app = modal.App.lookup(name, create_if_missing=True)
@@ -138,7 +186,19 @@ class Sandbox:
             execution_mode=self.config.execution_mode,
             notebook_packages=self.config.notebook_packages,
         )
-        return self._image_builder.build()
+        image = self._image_builder.build()
+
+        # Add local files to image
+        for local_path, remote_path in self.config.local_files:
+            print(f"  Adding local file: {local_path} -> {remote_path}")
+            image = image.add_local_file(local_path=local_path, remote_path=remote_path)
+
+        # Add local directories to image
+        for local_path, remote_path in self.config.local_dirs:
+            print(f"  Adding local dir: {local_path} -> {remote_path}")
+            image = image.add_local_dir(local_path=local_path, remote_path=remote_path)
+
+        return image
 
     def _create_sandbox(self, image: modal.Image):
         """Create and configure Modal sandbox."""
@@ -218,126 +278,82 @@ class Sandbox:
     def exec_python(self, code: str) -> str:
         """Execute Python code in the sandbox."""
         return self._run("python", "-c", code)
-    
-    def prepare_model(
-        self, 
-        name: str, 
-        hidden: bool = False,
-        is_peft: bool = False,
-        base_model: Optional[str] = None,
-    ) -> ModelHandle:
-        """
-        Prepare a model by setting up volume.
-        
-        Downloads happen when sandbox starts (or immediately if already started).
-        
-        Args:
-            name: HuggingFace model identifier
-            hidden: Whether to hide model name from agent
-            is_peft: Whether this is a PEFT adapter
-            base_model: Base model for PEFT adapters
-            
-        Returns:
-            ModelHandle with volume path
-        """
-        base_model_path = None
-        
-        # Handle PEFT base model first
-        if is_peft:
-            if not base_model:
-                raise ValueError("PEFT models require base_model to be specified")
-                
-            base_volume, base_mount = get_or_create_volume(base_model)
-            self._volumes[base_mount] = base_volume
-            base_model_path = base_mount
-        
-        # Get or create volume for main model/adapter
-        volume, mount_path = get_or_create_volume(name)
-        self._volumes[mount_path] = volume
-        
-        handle = ModelHandle(
-            name=name, 
-            volume_path=mount_path, 
-            hidden=hidden,
-            is_peft=is_peft,
-            base_model=base_model,
-            base_model_path=base_model_path,
-        )
-        self._model_handles.append(handle)
-        
-        # If sandbox already running, download now
-        if self._sandbox:
-            self._download_model(handle)
-        
-        return handle
-    
-    def prepare_repo(
-        self,
-        url: str,
-        dockerfile: Optional[str] = None,
-        install: str = False,
-    ) -> RepoHandle:
-        """
-        Prepare a repo for cloning.
 
-        Cloning happens when sandbox starts (or immediately if already started).
+    def _prepare_models(self):
+        """Prepare models from config by setting up volumes."""
+        for model_cfg in self.config.models:
+            base_model_path = None
 
-        Args:
-            url: GitHub repo URL or "org/repo"
-            dockerfile: Optional path to Dockerfile to build
-            install: Whether to pip install the repo after cloning
+            # Handle PEFT base model first
+            if model_cfg.is_peft:
+                if not model_cfg.base_model:
+                    raise ValueError("PEFT models require base_model to be specified")
 
-        Returns:
-            RepoHandle with local path
-        """
-        if not url.startswith("http"):
-            url = f"https://github.com/{url}"
+                base_volume, base_mount = get_or_create_volume(model_cfg.base_model)
+                self._volumes[base_mount] = base_volume
+                base_model_path = base_mount
 
-        repo_name = url.split("/")[-1].replace(".git", "")
-        local_path = f"/workspace/{repo_name}"
+            # Get or create volume for main model/adapter
+            volume, mount_path = get_or_create_volume(model_cfg.name)
+            self._volumes[mount_path] = volume
 
-        handle = RepoHandle(
-            url=url,
-            local_path=local_path,
-            dockerfile=dockerfile,
-            container_name=repo_name if dockerfile else None,
-            install=install,
-        )
-        self._repo_handles.append(handle)
+            handle = ModelHandle(
+                name=model_cfg.name,
+                volume_path=mount_path,
+                var_name=model_cfg.var_name,
+                hidden=model_cfg.hidden,
+                is_peft=model_cfg.is_peft,
+                base_model=model_cfg.base_model,
+                base_model_path=base_model_path,
+            )
+            self._model_handles.append(handle)
 
-        # If sandbox already running, clone now
-        if self._sandbox:
-            self._clone_repo(handle)
+    def _prepare_repos(self):
+        """Prepare repos from config."""
+        for repo_cfg in self.config.repos:
+            url = repo_cfg.url
+            if not url.startswith("http"):
+                url = f"https://github.com/{url}"
 
-        return handle
-    
+            repo_name = url.split("/")[-1].replace(".git", "")
+            local_path = f"/workspace/{repo_name}"
+
+            handle = RepoHandle(
+                url=url,
+                local_path=local_path,
+                dockerfile=repo_cfg.dockerfile,
+                container_name=repo_name if repo_cfg.dockerfile else None,
+                install=repo_cfg.install,
+            )
+            self._repo_handles.append(handle)
+
     def start_container(self, repo_handle: RepoHandle) -> None:
         """
         Start a container for a repo that has a dockerfile.
-        
+
         Args:
             repo_handle: RepoHandle with dockerfile specified
         """
         if not repo_handle.dockerfile:
             raise ValueError("RepoHandle has no dockerfile")
-            
+
         if not self.config.docker_in_docker:
             raise RuntimeError("docker_in_docker must be enabled")
-            
+
         if not self._sandbox:
             raise RuntimeError("Sandbox not started")
-        
+
         # Build container
         dockerfile_path = f"{repo_handle.local_path}/{repo_handle.dockerfile}"
         print(f"  Building container {repo_handle.container_name}...")
         self.exec(f"docker build -t {repo_handle.container_name} -f {dockerfile_path} {repo_handle.local_path}")
-        
+
         # Run container
         print(f"  Starting container {repo_handle.container_name}...")
         self.exec(f"docker run -d --name {repo_handle.container_name} {repo_handle.container_name}")
-        
+
         repo_handle.container_running = True
-    
+
     def _collect_secrets(self) -> list[modal.Secret]:
         """Collect Modal secrets."""
         secrets = []
@@ -537,7 +553,7 @@ if not repo_path.exists():
     def modal_sandbox(self) -> Optional[modal.Sandbox]:
         """Get underlying Modal sandbox object."""
         return self._sandbox
-    
+
     def terminate(self):
         """Terminate the sandbox."""
         if self._sandbox:

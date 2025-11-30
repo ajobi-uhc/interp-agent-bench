@@ -1,6 +1,6 @@
 """Docker-in-docker sandbox for evaluation benchmarks."""
 
-from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode
+from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode, RepoConfig
 from conftest import auto_cleanup
 
 config = SandboxConfig(
@@ -9,15 +9,15 @@ config = SandboxConfig(
     docker_in_docker=True,
     execution_mode=ExecutionMode.NOTEBOOK,
     debug=True,
+    repos=[RepoConfig(url="safety-research/impossiblebench", install=True)],
 )
 
 sandbox = Sandbox(config)
-repo = sandbox.prepare_repo("safety-research/impossiblebench", install=True)
 
 with auto_cleanup(sandbox):
     sandbox.start(name="impbench")
 
-    print(f"Repo: {repo.local_path}")
+    print(f"Repo: {sandbox._repo_handles[0].local_path}")
     print(f"VS Code: {sandbox.code_server_url}")
     print(f"Jupyter: {sandbox.jupyter_url}")
 

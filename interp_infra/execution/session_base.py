@@ -16,6 +16,7 @@ class SessionBase:
     Manages configuration accumulation for agent integration:
     - MCP endpoints (from Proxies)
     - System prompts (from Extension docs)
+    - File transfer utilities
     """
     _mcp_endpoints: list[dict] = field(default_factory=list, init=False, repr=False)
     _prompts: list[str] = field(default_factory=list, init=False, repr=False)
@@ -45,6 +46,24 @@ class SessionBase:
     def _execute_extension(self, extension: "Extension"):
         """Execute extension code. Subclasses implement this."""
         raise NotImplementedError("Subclasses must implement _execute_extension")
+
+    def exec_file(self, file_path: str, **kwargs):
+        """
+        Execute a Python file in the session.
+
+        Reads the file and executes its contents. Implementation varies by session type:
+        - NotebookSession: Executes in Jupyter kernel
+        - CLISession: Executes as Python script in sandbox
+        - LocalSession: Not supported (no remote execution)
+
+        Args:
+            file_path: Path to Python file (absolute or relative to cwd)
+            **kwargs: Additional arguments (e.g., hidden=True for NotebookSession)
+
+        Example:
+            session.exec_file("experiments/entity/load_sae.py", hidden=True)
+        """
+        raise NotImplementedError("Subclasses must implement exec_file")
 
     @property
     def system_prompt(self) -> str:

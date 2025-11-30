@@ -1,6 +1,6 @@
 """Test PEFT adapter loading in notebook session."""
 
-from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode
+from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
 from interp_infra.execution import create_notebook_session
 from conftest import auto_cleanup
 
@@ -8,17 +8,16 @@ config = SandboxConfig(
     python_packages=["torch", "transformers", "peft"],
     gpu="H100",
     execution_mode=ExecutionMode.NOTEBOOK,
+    models=[
+        ModelConfig(
+            name="ybelkada/opt-350m-lora",
+            is_peft=True,
+            base_model="facebook/opt-350m",
+        )
+    ],
 )
 
 sandbox = Sandbox(config)
-
-# Prepare PEFT adapter with base model
-# Using a small PEFT adapter for testing
-sandbox.prepare_model(
-    name="ybelkada/opt-350m-lora",
-    is_peft=True,
-    base_model="facebook/opt-350m",
-)
 
 with auto_cleanup(sandbox):
     sandbox.start(name="peft-test")
