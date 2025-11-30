@@ -103,6 +103,13 @@ class ScopedSandbox(Sandbox):
         scoped.exec("python my_server.py &")
         proxy = scoped.create_proxy(port=8080, functions=["chat"])
     """
+
+    def _prepare_models(self):
+        """Override to make idempotent - skip if already prepared."""
+        if self._models_prepared:
+            return
+        super()._prepare_models()
+        self._models_prepared = True
     
     def __init__(self, config: SandboxConfig):
         config.execution_mode = None  # ScopedSandbox manages its own RPC server
@@ -112,7 +119,7 @@ class ScopedSandbox(Sandbox):
         self._proxy: Optional[Proxy] = None
         self._specified_functions: Optional[list[str]] = None
         self._serve_file_code: Optional[str] = None
-        self._serve_repo_config: Optional[dict] = None
+        self._models_prepared: bool = False
     
     def serve_file(self, path: str | Path, port: int = None, functions: list[str] = None) -> "ScopedSandbox":
         """Serve a Python file via RPC. Top-level functions become the interface."""
@@ -134,52 +141,30 @@ class ScopedSandbox(Sandbox):
         self._specified_functions = functions
         return self
 
-    def serve_repo(
-        self,
-        url: str,
-        install: str = None,
-        run: str = None,
-        interface: str = None,
-        port: int = None,
-        functions: list[str] = None,
-    ) -> "ScopedSandbox":
-        """Clone a repo and serve via RPC."""
-        if not run and not interface:
-            raise ValueError("Provide run= or interface=")
-        if run and not functions:
-            raise ValueError("run= requires functions=")
-
-        self._serve_repo_config = {"url": url, "install": install, "run": run, "interface": interface}
-        if port is not None:
-            self._rpc_port = port
-        self._specified_functions = functions
-        return self
-    
     def start(self, name: str = "scoped") -> "Proxy | ScopedSandbox":
         """Start sandbox. Returns Proxy if serving, self if bare mode."""
-        is_serving = self._serve_file_code or self._serve_repo_config
-        
+        is_serving = self._serve_file_code
+
         # Add RPC port to config before starting
         if is_serving:
             if not hasattr(self.config, 'encrypted_ports'):
                 self.config.encrypted_ports = []
             self.config.encrypted_ports = [self._rpc_port]
-        
-        # Inject model paths as env var
+
+        # Prepare models early so we can inject env vars before sandbox creation
+        self._prepare_models()
+
+        # Inject model paths as env var (must be BEFORE super().start() which creates sandbox)
         if self._model_handles:
             self.config.env["PREPARED_MODELS"] = json.dumps({h.name: h.volume_path for h in self._model_handles})
-        
+
         super().start(name)
         
         if not is_serving:
             return self
-        
-        # Start server
-        if self._serve_file_code:
-            self._start_rpc_server()
-        else:
-            self._start_repo_server()
-        
+
+        # Start RPC server
+        self._start_rpc_server()
         self._proxy = self.create_proxy(self._rpc_port, self._specified_functions)
         print(f"  Proxy: {self._proxy.functions}")
         return self._proxy
@@ -188,44 +173,36 @@ class ScopedSandbox(Sandbox):
         """Start RPC server with user code."""
         print("  Starting RPC server...")
 
+        # Copy RPC server code to sandbox
+        from pathlib import Path
+        rpc_server_path = Path(__file__).parent / "rpc_server.py"
+        rpc_server_code = rpc_server_path.read_text()
+
+        with self._sandbox.open("/root/rpc_server.py", "w") as f:
+            f.write(rpc_server_code)
+
         # Write user code
         with self._sandbox.open("/root/user_code.py", "w") as f:
             f.write(self._serve_file_code)
 
-        # Use the proper RPC server module
+        # Run RPC server directly (not as module)
         self.exec(
-            f"nohup python -m interp_infra.environment.rpc_server {self._rpc_port} /root/user_code.py > /var/log/rpc.log 2>&1 &"
+            f"nohup python /root/rpc_server.py {self._rpc_port} /root/user_code.py > /var/log/rpc.log 2>&1 &"
         )
-        self._wait_for_port(self._rpc_port)
-    
-    def _start_repo_server(self):
-        """Clone repo and start server."""
-        cfg = self._serve_repo_config
-        url = cfg["url"] if cfg["url"].startswith("http") else f"https://github.com/{cfg['url']}"
-        repo_name = url.split("/")[-1].replace(".git", "")
-        repo_path = f"/workspace/{repo_name}"
 
-        print(f"  Cloning {repo_name}...")
-        self.exec(f"git clone {url} {repo_path}")
+        # Give it a moment to start
+        time.sleep(2)
 
-        if cfg["install"]:
-            print(f"  Installing...")
-            self.exec(f"cd {repo_path} && {cfg['install']}")
-
-        if cfg["run"]:
-            print(f"  Running: {cfg['run']}")
-            self.exec(f"cd {repo_path} && nohup {cfg['run']} > /var/log/server.log 2>&1 &")
-        else:
-            # Create user code that imports from repo
-            code = f'import sys; sys.path.insert(0, "{repo_path}"); exec(open("{repo_path}/{cfg["interface"]}").read())'
-            with self._sandbox.open("/root/user_code.py", "w") as f:
-                f.write(code)
-            self.exec(
-                f"nohup python -m interp_infra.environment.rpc_server {self._rpc_port} /root/user_code.py > /var/log/rpc.log 2>&1 &"
-            )
+        # Check for immediate errors
+        try:
+            initial_logs = self.exec('head -50 /var/log/rpc.log 2>/dev/null || echo "No logs yet"')
+            if initial_logs and initial_logs != "No logs yet":
+                print(f"  Initial RPC output:\n{initial_logs}")
+        except:
+            pass
 
         self._wait_for_port(self._rpc_port)
-    
+
     def create_proxy(self, port: int, functions: list[str] = None) -> Proxy:
         """Create proxy to HTTP endpoint."""
         if not self._sandbox:
@@ -248,15 +225,30 @@ class ScopedSandbox(Sandbox):
         if max_retries is None:
             max_retries = self.config.wait_timeout // 5  # 5 second intervals
 
-        for _ in range(max_retries):
+        print(f"  Waiting for server on port {port}...")
+        for i in range(max_retries):
             try:
                 url = self._sandbox.tunnels()[port].url
-                if requests.get(url, timeout=5).ok:
+                resp = requests.get(url, timeout=5)
+                if resp.ok:
+                    print(f"  Server ready!")
                     return
-            except:
-                pass
-            time.sleep(5)
-        raise RuntimeError(f"Server on {port} failed. Logs:\n{self.exec('cat /var/log/rpc.log /var/log/server.log 2>/dev/null || true')}")
+            except Exception as e:
+                if i % 3 == 0:  # Print every 15 seconds
+                    print(f"  Still waiting... (attempt {i+1}/{max_retries})")
+                    # Check logs periodically
+                    try:
+                        logs = self.exec('tail -20 /var/log/rpc.log 2>/dev/null || echo "No logs yet"')
+                        if "error" in logs.lower() or "traceback" in logs.lower():
+                            print(f"  Error detected in logs:\n{logs}")
+                    except:
+                        pass
+                time.sleep(5)
+
+        # Failed - get full logs
+        print(f"  Server failed to start. Fetching logs...")
+        logs = self.exec('cat /var/log/rpc.log 2>/dev/null || echo "No RPC logs found"')
+        raise RuntimeError(f"Server on port {port} failed to start within {max_retries * 5}s.\n\nRPC Logs:\n{logs}")
     
     @property
     def proxy(self) -> Optional[Proxy]:

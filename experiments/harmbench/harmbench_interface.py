@@ -6,11 +6,11 @@ import os
 import csv
 from pathlib import Path
 
-# Add local code directory and HarmBench to path
+# Add paths for imports
 sys.path.insert(0, "/workspace/harmbench_code")
 sys.path.insert(0, "/workspace/harmbench_code/HarmBench")
 
-from interp_infra.environment.interface import expose
+# Note: @expose decorator is automatically injected by RPC server
 
 # Import HarmBench attack methods
 from baselines.direct_request.direct_request import DirectRequest

@@ -46,26 +46,6 @@ class RPCHandler(BaseHTTPRequestHandler):
         pass
 
 
-def extract_functions(namespace: Dict[str, Any]) -> Dict[str, Callable]:
-    """
-    Extract functions marked with @expose decorator.
-
-    Args:
-        namespace: Global namespace dict
-
-    Returns:
-        Dict of function name to function object
-    """
-    from interp_infra.environment.interface import get_exposed_functions
-    functions = get_exposed_functions()
-
-    if not functions:
-        raise RuntimeError("No functions exposed with @expose decorator")
-
-    print(f"Exposed functions: {list(functions.keys())}", file=sys.stderr)
-    return functions
-
-
 def serve(port: int, user_code: str):
     """
     Start RPC server with user code.
@@ -74,17 +54,43 @@ def serve(port: int, user_code: str):
         port: Port to listen on
         user_code: Python code to execute (defines functions to serve)
     """
-    # Execute user code in a clean namespace
-    namespace = {"__name__": "__main__"}
-    exec(user_code, namespace)
+    try:
+        print(f"[RPC] Starting server on port {port}", file=sys.stderr)
 
-    # Extract functions
-    RPCHandler.functions = extract_functions(namespace)
-    print(f"Functions: {list(RPCHandler.functions.keys())}", file=sys.stderr)
+        # Registry for exposed functions
+        _exposed_functions = {}
 
-    # Start server
-    print(f"RPC on {port}", file=sys.stderr)
-    HTTPServer(("0.0.0.0", port), RPCHandler).serve_forever()
+        # Define the @expose decorator
+        def expose(func):
+            """Decorator to mark functions for RPC exposure."""
+            _exposed_functions[func.__name__] = func
+            return func
+
+        print(f"[RPC] Executing user code...", file=sys.stderr)
+
+        # Execute user code with decorator available
+        namespace = {
+            "__name__": "__main__",
+            "expose": expose,  # Inject decorator
+        }
+        exec(user_code, namespace)
+
+        # Use exposed functions
+        RPCHandler.functions = _exposed_functions
+
+        if not _exposed_functions:
+            raise RuntimeError("No functions exposed with @expose decorator")
+
+        print(f"[RPC] Exposed functions: {list(_exposed_functions.keys())}", file=sys.stderr)
+
+        # Start server
+        print(f"[RPC] Server listening on 0.0.0.0:{port}", file=sys.stderr)
+        HTTPServer(("0.0.0.0", port), RPCHandler).serve_forever()
+    except Exception as e:
+        print(f"[RPC] ERROR: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        raise
 
 
 if __name__ == "__main__":
