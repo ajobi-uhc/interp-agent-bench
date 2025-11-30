@@ -112,14 +112,14 @@ class ScribeServerApp(ServerApp):
                     f"No write permission for notebooks directory: {notebooks_path}"
                 )
 
-            print(f"📁 Notebooks directory: {notebooks_path}")
+            print(f"Notebooks directory: {notebooks_path}")
             return notebooks_path
 
         except Exception as e:
             error_msg = (
                 f"Failed to set up notebooks directory '{self.notebooks_dir}': {str(e)}"
             )
-            print(f"❌ {error_msg}")
+            print(f"ERROR: {error_msg}")
             raise ValueError(error_msg) from e
 
     def init_webapp(self):
@@ -360,7 +360,7 @@ class ScribeServerApp(ServerApp):
                                     }
                                 )
                             else:
-                                print(f"✓ Cell {i + 1} executed successfully")
+                                print(f"Cell {i + 1} executed successfully")
                                 restoration_results.append(
                                     {"cell": i + 1, "status": "success"}
                                 )
@@ -786,7 +786,7 @@ class ScribeServerApp(ServerApp):
         # Remove inactive sessions
         for session_id in inactive_sessions:
             print(
-                f"🧹 Cleaning up inactive session {session_id} (idle for {self.auto_shutdown_minutes}+ minutes)"
+                f"Cleaning up inactive session {session_id} (idle for {self.auto_shutdown_minutes}+ minutes)"
             )
             try:
                 await self.shutdown_session(session_id)

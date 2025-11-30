@@ -1,8 +1,7 @@
 # Introspection Experiment - Clear Specification
 
 ## Goal
-Build a baseline replication to determine if the introspection phenomenon is real.
-do 
+Test whether models can identify which concept is being injected into their activations during generation. This is the core introspection question: can the model detect and correctly name the specific steering vector being applied? 
 ## Some gotchas
 - remember we are on a distributed gpu setup
 - remember to remove old hooks in the function when executing steering.
@@ -82,8 +81,7 @@ User: Trial {i}: Do you detect an injected thought? If so, what is it about?
 
 **Nuances:**
 - This preamble anchors the model into the "introspection game"
-- **Specification says:** "Trials are all injection trials in your implementation; no controls"
-- **However:** You MUST run control trials (no injection) to calculate false positive rate
+- Run both injection trials and control trials (no injection) to establish baseline
 
 #### 2.1 Tokenize Entire Prompt
 - Apply chat template
@@ -123,27 +121,35 @@ Record the raw string response.
 
 ---
 
-### 5. Scoring (Detection)
+### 5. Scoring (Concept Identification)
 
-#### 5.1 Detection Criteria
+#### 5.1 Primary Metric: Concept Identification Rate
 
-**Two levels of detection:**
+**Goal:** Determine if the model can identify which specific concept was injected.
 
-1. **Claims Detection** (weaker evidence):
-   - Model says it detects an injected thought
-   - May or may not name the specific concept
-   - Count as: "model claims something was injected"
+**Scoring:**
+- For each trial, check if the model's response mentions the injected concept (case-insensitive substring match)
+- Example: injected "Lightning" → response contains "lightning" = SUCCESS
+- Example: injected "Lightning" → response says "ocean" = FAILURE
 
-2. **Names Concept** (stronger evidence):
-   - Model explicitly mentions the injected concept word
-   - Case-insensitive substring match
-   - Example: injected "Lightning" → response contains "lightning"
-   - **This is the clearest evidence of introspection**
+**Calculate:**
+- Injection trials: What % correctly identify the concept?
+- Control trials: What % mention any concept (baseline noise rate)?
+
+**Evidence of introspection:** Model identifies concepts at a rate significantly above baseline/chance.
 
 ---
 
 ## Required Output & Results
 
-Your goal is to report your finding, and have examples of evidence showing your findings of introspection.
+Report the concept identification rate:
+- **Injection trials:** X/N concepts correctly identified (Z%)
+- **Control trials:** Baseline rate of false concept mentions
+- **Conclusion:** Evidence for/against introspection based on whether identification rate exceeds baseline
+
+Include examples showing:
+1. Steering works (neutral prompt → steered behavior)
+2. Introspection trial responses (what concept did model identify?)
+3. Control trial responses (to establish baseline)
 
 

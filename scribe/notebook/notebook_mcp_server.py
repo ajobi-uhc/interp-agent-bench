@@ -28,18 +28,20 @@ from scribe.notebook._notebook_server_utils import (
 # Initialize MCP server
 mcp = FastMCP("scribe")
 
-# Global server management
+# Global server management (legacy single-server support)
 _server_process: Optional[subprocess.Popen] = None
 _server_port: Optional[int] = None
 _server_url: Optional[str] = None
 _server_token: Optional[str] = None
-# Down the line, we may wish to keep the Jupyter server around even after MCP server exits
 _is_external_server: bool = False
 
 SCRIBE_PROVIDER: str = os.environ.get("SCRIBE_PROVIDER")
 
 # Session tracking for cleanup
 _active_sessions: set = set()
+
+# Multi-session support: Track multiple Jupyter connections
+_sessions: Dict[str, Dict[str, Any]] = {}  # session_id -> {jupyter_url, notebook_dir}
 
 
 def start_jupyter_server() -> tuple[subprocess.Popen, int, str]:
@@ -74,6 +76,13 @@ def cleanup_server():
 def ensure_server_running() -> str:
     """Ensure a Jupyter server is running and return its URL."""
     global _server_process, _server_port, _server_url, _is_external_server
+
+    print(f"[DEBUG] ensure_server_running called: _server_url={_server_url}, _is_external_server={_is_external_server}", file=sys.stderr)
+
+    # Check if _server_url was already set (via set_jupyter_url tool)
+    if _server_url is not None and _is_external_server:
+        print(f"[DEBUG] Using pre-set server URL: {_server_url}", file=sys.stderr)
+        return _server_url
 
     # Check if SCRIBE_URL is set (external server with full URL)
     if "SCRIBE_URL" in os.environ:
@@ -121,6 +130,16 @@ def get_headers() -> dict:
     if token:
         headers["Authorization"] = f"token {token}"
     return headers
+
+
+def _get_session_url(session_id: str) -> str:
+    """Get Jupyter URL for a session. Raises if session not registered."""
+    global _sessions
+
+    if session_id not in _sessions:
+        raise Exception(f"Session {session_id} not found. Call attach_to_session() first.")
+
+    return _sessions[session_id]["jupyter_url"]
 
 
 def get_server_status() -> Dict[str, Any]:
@@ -280,36 +299,50 @@ async def _start_session_internal(
         raise Exception(f"Failed to start session ({tool_name}): {str(e)}")
 
 
-@mcp.tool
-async def attach_to_session(session_id: str) -> Dict[str, Any]:
-    """
-    Attach to an existing pre-warmed session (typically created by the infrastructure layer).
+# Legacy tools removed - use attach_to_session() instead which handles both
 
-    Use this when the infrastructure has already created a session with models loaded.
-    This avoids waiting for model loading and provides instant access to a ready kernel.
+
+@mcp.tool
+async def attach_to_session(session_id: str, jupyter_url: str, notebook_dir: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Attach to an existing Jupyter session on a specific GPU cluster.
+
+    Use this to connect to pre-warmed sessions with models already loaded.
+    Multiple agents can attach to different sessions simultaneously.
 
     Args:
-        session_id: The session ID of the pre-warmed session
+        session_id: The session ID from deploy_from_config
+        jupyter_url: The Jupyter server URL from deploy_from_config
+        notebook_dir: Optional local directory for saving notebook (default: ./outputs)
 
     Returns:
         Dictionary with:
         - session_id: The session identifier
+        - jupyter_url: The connected Jupyter URL
+        - notebook_path: Local path where notebook syncs
         - status: "attached"
-        - note: Confirmation message
     """
-    try:
-        server_url = ensure_server_running()
+    global _sessions
 
+    # Register this session
+    notebook_dir = notebook_dir or os.environ.get("NOTEBOOK_OUTPUT_DIR", "./outputs")
+    _sessions[session_id] = {
+        "jupyter_url": jupyter_url,
+        "notebook_dir": notebook_dir
+    }
+
+    print(f"[DEBUG] Registered session {session_id} -> {jupyter_url}", file=sys.stderr)
+
+    try:
         # Verify the session exists and is responsive
-        headers = get_headers()
         check_response = requests.post(
-            f"{server_url}/api/scribe/exec",
+            f"{jupyter_url}/api/scribe/exec",
             json={
                 "session_id": session_id,
                 "code": "'kernel_ready'",
                 "hidden": True,
             },
-            headers=headers,
+            headers={},  # External Jupyter uses encrypted ports, no token needed
             timeout=10,
         )
         check_response.raise_for_status()
@@ -318,10 +351,14 @@ async def attach_to_session(session_id: str) -> Dict[str, Any]:
         global _active_sessions
         _active_sessions.add(session_id)
 
+        notebook_path = f"{notebook_dir}/notebook.ipynb"
+
         return {
             "session_id": session_id,
+            "jupyter_url": jupyter_url,
+            "notebook_path": notebook_path,
             "status": "attached",
-            "note": f"Successfully attached to pre-warmed session {session_id}. Models are already loaded and ready to use.",
+            "note": f"Connected to session {session_id}. Models ready. Use execute_code(session_id='{session_id}', ...) to run code.",
         }
 
     except requests.exceptions.RequestException as e:
@@ -429,48 +466,40 @@ async def start_session_continue_notebook(
 
 
 def _save_notebook_locally(session_id: str, notebook_path: str):
-    """Download and save notebook to local NOTEBOOK_OUTPUT_DIR."""
-    output_dir = os.environ.get("NOTEBOOK_OUTPUT_DIR")
-    if not output_dir:
-        print(f"[DEBUG] No NOTEBOOK_OUTPUT_DIR set, skipping local save", file=sys.stderr)
-        return  # No local output dir configured
+    """Download and save notebook locally for the session."""
+    global _sessions
+
+    # Get the local notebook directory for this session
+    if session_id not in _sessions:
+        return  # Session not registered, skip save
+
+    notebook_dir = _sessions[session_id].get("notebook_dir")
+    if not notebook_dir:
+        return  # No local directory configured
 
     try:
-        server_url = ensure_server_running()
-        headers = get_headers()
+        jupyter_url = _sessions[session_id]["jupyter_url"]
 
-        print(f"[DEBUG] Downloading notebook from {server_url}/api/contents{notebook_path}", file=sys.stderr)
-
-        # Download notebook content from server
+        # Download notebook content from remote Jupyter
         response = requests.get(
-            f"{server_url}/api/contents{notebook_path}",
-            headers=headers,
+            f"{jupyter_url}/api/contents{notebook_path}",
+            headers={},
         )
         response.raise_for_status()
         notebook_data = response.json()
 
-        print(f"[DEBUG] Response keys: {list(notebook_data.keys())}", file=sys.stderr)
-        print(f"[DEBUG] Response type: {notebook_data.get('type')}", file=sys.stderr)
-
         # Save to local file
         from pathlib import Path
         import json
-        local_path = Path(output_dir) / Path(notebook_path).name
 
-        # Debug: check what's in content
-        content = notebook_data.get("content")
-        print(f"[DEBUG] Content type: {type(content)}", file=sys.stderr)
-        if isinstance(content, dict):
-            print(f"[DEBUG] Content keys: {list(content.keys())}", file=sys.stderr)
-
+        Path(notebook_dir).mkdir(parents=True, exist_ok=True)
+        local_path = Path(notebook_dir) / Path(notebook_path).name
         local_path.write_text(json.dumps(notebook_data["content"], indent=2))
-        print(f"[DEBUG] Saved notebook to {local_path}", file=sys.stderr)
+
+        print(f"[DEBUG] Synced notebook to {local_path}", file=sys.stderr)
 
     except Exception as e:
-        # Don't fail execution if local save fails
-        print(f"[DEBUG] Warning: Failed to save notebook locally: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
+        print(f"[DEBUG] Warning: Failed to sync notebook: {e}", file=sys.stderr)
 
 
 async def _execute_code_internal(
@@ -484,13 +513,12 @@ async def _execute_code_internal(
         hidden: If True, code executes in kernel but doesn't create a visible notebook cell
     """
     try:
-        server_url = ensure_server_running()
-        headers = get_headers()
+        jupyter_url = _get_session_url(session_id)
 
         response = requests.post(
-            f"{server_url}/api/scribe/exec",
+            f"{jupyter_url}/api/scribe/exec",
             json={"session_id": session_id, "code": code, "hidden": hidden},
-            headers=headers,
+            headers={},
         )
         response.raise_for_status()
         data = response.json()
@@ -499,14 +527,14 @@ async def _execute_code_internal(
         if "notebook_path" in data:
             _save_notebook_locally(session_id, data["notebook_path"])
 
-        # Process outputs using utils function
+        # Process outputs
         outputs, images = process_jupyter_outputs(
             data["outputs"],
             session_id=session_id,
             save_images_locally=False,
         )
 
-        # Create result list with execution metadata first, then images
+        # Return execution metadata + images
         result = [
             {
                 "session_id": session_id,
@@ -518,7 +546,7 @@ async def _execute_code_internal(
         return result
 
     except requests.exceptions.RequestException as e:
-        raise Exception(f"Failed to execute code: {str(e)}")
+        raise Exception(f"Failed to execute code in session {session_id}: {str(e)}")
 
 
 @mcp.tool
@@ -557,17 +585,19 @@ async def add_markdown(session_id: str, content: str) -> Dict[str, int]:
         Dictionary with the cell number
     """
     try:
-        server_url = ensure_server_running()
-        headers = get_headers()
+        jupyter_url = _get_session_url(session_id)
 
         response = requests.post(
-            f"{server_url}/api/scribe/markdown",
+            f"{jupyter_url}/api/scribe/markdown",
             json={"session_id": session_id, "content": content},
-            headers=headers,
+            headers={},
         )
         response.raise_for_status()
         data = response.json()
 
+        # Save notebook locally after adding markdown
+        if "notebook_path" in data:
+            _save_notebook_locally(session_id, data["notebook_path"])
 
         return {"cell_number": data["cell_number"]}
 
@@ -600,26 +630,28 @@ async def edit_cell(
         - outputs: List of output objects with type and content/data
     """
     try:
-        server_url = ensure_server_running()
-        headers = get_headers()
+        jupyter_url = _get_session_url(session_id)
 
         response = requests.post(
-            f"{server_url}/api/scribe/edit",
+            f"{jupyter_url}/api/scribe/edit",
             json={"session_id": session_id, "code": code, "cell_index": cell_index},
-            headers=headers,
+            headers={},
         )
         response.raise_for_status()
         data = response.json()
 
-        # Process outputs using utils function
+        # Save notebook locally after editing cell
+        if "notebook_path" in data:
+            _save_notebook_locally(session_id, data["notebook_path"])
+
+        # Process outputs
         outputs, images = process_jupyter_outputs(
             data["outputs"],
             session_id=session_id,
             save_images_locally=False,
         )
 
-
-        # Create result list with execution metadata first, then images
+        # Return execution metadata + images
         result = [
             {
                 "session_id": session_id,

@@ -1,0 +1,12 @@
+{
+  "name": "modal-infra",
+  "owner": {
+    "name": "arya",
+    "email": "arya@company.com"
+  },
+  "plugins": [{
+      "name": "modal-infra-plugin",
+      "source": "./modal-infra-plugin",
+      "description": "AI-powered ML interpretability research toolkit with GPU provisioning"
+  }]
+}

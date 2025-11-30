@@ -139,7 +139,7 @@ def save_results(results, notebook_path):
     with open(results_file, 'w') as f:
         json.dump(existing_results, f, indent=2)
     
-    print(f"\n✅ Results saved to: {results_file}")
+    print(f"\nResults saved to: {results_file}")
 
 def main():
     # For testing purposes, you can control arguments here

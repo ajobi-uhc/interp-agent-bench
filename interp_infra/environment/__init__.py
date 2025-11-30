@@ -1,5 +1,6 @@
-"""Environment stage - Infrastructure setup (GPU, models download, repos)."""
+"""Environment layer - Sandboxes, models, repos."""
 
-from .modal import setup_environment, EnvironmentHandle
+from .sandbox import Sandbox, SandboxConfig, ExecutionMode
+from .scoped_sandbox import ScopedSandbox
 
-__all__ = ['setup_environment', 'EnvironmentHandle']
+__all__ = ["Sandbox", "SandboxConfig", "ExecutionMode", "ScopedSandbox"]
