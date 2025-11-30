@@ -1,57 +1,94 @@
-"""Skill definition for agent capabilities."""
+"""Skill definition - compatible with Claude Code skills."""
 
 from dataclasses import dataclass
 from pathlib import Path
-from ..execution.notebook_session import NotebookSession
+from typing import Optional
 
 
 @dataclass
 class Skill:
-    """A skill is Python code + prompt that extends agent capabilities."""
+    """
+    A skill that extends agent capabilities.
+
+    Compatible with Claude Code SKILL.md format.
+    Can be loaded into different session types differently.
+    """
     name: str
-    code: str  # Python code to exec in kernel
-    prompt: str  # Description for agent's system prompt
-    preload: bool = True  # Whether to preload code into kernel
+    prompt: str  # The main instructions (from SKILL.md body)
+    description: str = ""  # Short description (from frontmatter)
+    code: Optional[str] = None  # Optional code.py contents
+    path: Optional[Path] = None  # Original path for accessing other files
 
     @classmethod
-    def from_file(cls, path: str) -> "Skill":
-        """Load skill from markdown file with YAML frontmatter."""
-        import re
+    def from_dir(cls, path: str | Path) -> "Skill":
+        """
+        Load skill from a directory (Claude Code format).
 
-        content = Path(path).read_text()
+        Expected structure:
+            skill-name/
+                SKILL.md      # Required
+                code.py       # Optional
+                reference.md  # Optional
+                scripts/      # Optional
+        """
+        skill_dir = Path(path)
+        skill_md = skill_dir / "SKILL.md"
 
-        # Split frontmatter and markdown
-        parts = content.split('---\n', 2)
-        if len(parts) < 3:
-            raise ValueError(f"Invalid skill format: {path}")
+        if not skill_md.exists():
+            raise FileNotFoundError(f"SKILL.md not found in {path}")
 
-        frontmatter = parts[1]
-        markdown = parts[2]
+        content = skill_md.read_text()
 
-        # Extract name and description
-        name = re.search(r'name:\s*(.+)', frontmatter).group(1).strip()
-        desc_match = re.search(r'description:\s*(.+)', frontmatter)
-        description = desc_match.group(1).strip() if desc_match else ""
+        # Parse frontmatter
+        name = skill_dir.name
+        description = ""
+        prompt = content
 
-        # Check preload flag
-        preload_match = re.search(r'preload:\s*(.+)', frontmatter)
-        preload = preload_match.group(1).strip().lower() == 'true' if preload_match else True
+        if content.startswith("---"):
+            parts = content.split("---", 2)
+            if len(parts) >= 3:
+                frontmatter = parts[1]
+                prompt = parts[2].strip()
 
-        # Extract Python code blocks only from ## Usage section
-        usage_section = re.search(r'## Usage\s*\n(.*?)(?=\n##|\Z)', markdown, re.DOTALL)
-        if usage_section:
-            code_blocks = re.findall(r'```python\n(.*?)```', usage_section.group(1), re.DOTALL)
-            code = '\n\n'.join(code_blocks)
-        else:
-            code = ''
+                for line in frontmatter.strip().split("\n"):
+                    if line.startswith("name:"):
+                        name = line.split(":", 1)[1].strip()
+                    elif line.startswith("description:"):
+                        description = line.split(":", 1)[1].strip()
 
-        # Use markdown as prompt
-        prompt = f"{description}\n\n{markdown}"
+        # Load code.py if exists
+        code = None
+        code_py = skill_dir / "code.py"
+        if code_py.exists():
+            code = code_py.read_text()
 
-        return cls(name=name, code=code, prompt=prompt, preload=preload)
-    
-    def load_into_session(self, session: NotebookSession):
-        """Load the skill code into the notebook session."""
-        if self.preload and self.code:
-            session.exec(self.code, hidden=True)
+        return cls(
+            name=name,
+            prompt=prompt,
+            description=description,
+            code=code,
+            path=skill_dir,
+        )
 
+    @classmethod
+    def from_file(cls, path: str | Path) -> "Skill":
+        """Load skill from a single SKILL.md file."""
+        path = Path(path)
+        return cls.from_dir(path.parent) if path.name == "SKILL.md" else cls.from_dir(path)
+
+    @classmethod
+    def from_prompt(cls, name: str, prompt: str) -> "Skill":
+        """Create a prompt-only skill."""
+        return cls(name=name, prompt=prompt)
+
+    @classmethod
+    def from_code(cls, name: str, code: str, prompt: str = "") -> "Skill":
+        """Create a code skill inline."""
+        return cls(name=name, prompt=prompt, code=code)
+
+    def get_file(self, filename: str) -> Optional[str]:
+        """Get contents of a supporting file in the skill directory."""
+        if not self.path:
+            return None
+        file_path = self.path / filename
+        return file_path.read_text() if file_path.exists() else None

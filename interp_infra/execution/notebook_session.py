@@ -1,21 +1,35 @@
 """Simple notebook session management."""
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Union
 import requests
 
 from ..environment.sandbox import Sandbox
 from ..environment.handles import ModelHandle, RepoHandle
 
+if TYPE_CHECKING:
+    from ..harness.skill import Skill
+    from ..environment.scoped_sandbox import Proxy
+    from ..extension import Extension
+
 
 @dataclass
 class NotebookSession:
-    """A live notebook session."""
+    """
+    A live notebook session.
+
+    Manages both:
+    1. Environment: Prepares runtime (loads models, sets up workspace)
+    2. Configuration: Accumulates agent primitives (MCP endpoints, prompts, extensions)
+    """
     session_id: str
     jupyter_url: str
     sandbox: Sandbox
     notebook_dir: str = "./outputs"
+
+    # Configuration accumulators
+    _mcp_endpoints: list[dict] = field(default_factory=list, init=False)
+    _prompts: list[str] = field(default_factory=list, init=False)
 
     def exec(self, code: str, hidden: bool = False) -> dict:
         """Execute code in the notebook kernel."""
@@ -40,10 +54,58 @@ class NotebookSession:
 
         return result
 
+    def load_skill(self, skill: "Skill") -> str:
+        """
+        Load skill into notebook session.
+
+        Executes code.py if present, returns prompt for agent.
+        """
+        if skill.code:
+            self.exec(skill.code, hidden=True)
+        return skill.prompt
+
+    def add(self, item: Union["Proxy", "Extension"]):
+        """
+        Add extension or proxy to the session.
+
+        - Extension: Code executed in kernel, docs added to prompt
+        - Proxy: Added as MCP tool (only way to use ScopedSandbox)
+
+        Args:
+            item: Extension (local code) or Proxy (from ScopedSandbox)
+
+        Examples:
+            session.add(steering_extension)  # Code runs in kernel
+            session.add(target_proxy)        # chat() becomes MCP tool
+        """
+        from ..environment.scoped_sandbox import Proxy
+        from ..extension import Extension
+
+        if isinstance(item, Proxy):
+            # Proxy → MCP tool (ScopedSandbox interface)
+            self._mcp_endpoints.append(item.as_mcp_config())
+
+        elif isinstance(item, Extension):
+            # Extension → Execute code in namespace + docs to prompt
+            if item.code:
+                self.exec(item.code, hidden=True)
+            if item.docs:
+                self._prompts.append(item.docs)
+
+        else:
+            raise TypeError(f"Expected Proxy or Extension, got {type(item)}")
+
     @property
     def mcp_config(self) -> dict:
-        """MCP config for connecting an agent."""
-        return {
+        """
+        MCP configuration for connecting agents.
+
+        Includes:
+        - Notebook execution tools (execute_code, add_markdown)
+        - Any added proxies/extensions exposed as MCP
+        """
+        # Start with notebook's built-in MCP
+        config = {
             "notebooks": {
                 "type": "stdio",
                 "command": "python",
@@ -54,6 +116,19 @@ class NotebookSession:
                 }
             }
         }
+
+        # Add any additional MCP endpoints
+        for endpoint in self._mcp_endpoints:
+            config.update(endpoint)
+
+        return config
+
+    @property
+    def system_prompt(self) -> str:
+        """Accumulated system prompt from extensions."""
+        if not self._prompts:
+            return ""
+        return "\n\n".join(self._prompts)
 
 
 def create_notebook_session(
@@ -72,7 +147,7 @@ def create_notebook_session(
         NotebookSession ready for agent
     """
     if not sandbox.jupyter_url:
-        raise RuntimeError("Sandbox doesn't have jupyter. Use notebook=True.")
+        raise RuntimeError("Sandbox doesn't have jupyter. Use execution_mode=ExecutionMode.NOTEBOOK.")
 
     # Start kernel session
     print("Creating notebook session...")

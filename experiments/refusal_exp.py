@@ -8,9 +8,10 @@ from pathlib import Path
 # Add parent directory to path so we can import interp_infra
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from interp_infra.environment import Sandbox, SandboxConfig, sandbox
+from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode
 from interp_infra.execution import create_notebook_session
-from interp_infra.harness import run_agent, Skill
+from interp_infra.harness import run_agent
+from interp_infra import Extension
 
 # Global sandbox reference for cleanup
 sandbox_instance = None
@@ -30,27 +31,31 @@ async def main():
     global sandbox_instance
 
     # Load task and system prompt
-    task_text = Path("test/impossible_bench_task.md").read_text()
-    system_prompt = Path("test/base_instructions.md").read_text()
+    task_text = Path("experiments/task.md").read_text()
+    system_prompt = Path("experiments/base_instructions.md").read_text()
 
     # Set up signal handler for Ctrl+C
     signal.signal(signal.SIGINT, cleanup_handler)
 
     # Create sandbox
-    print("Setting up environment (cpu)...")
+    print("Setting up environment...")
     sandbox = Sandbox(
-        # Create sandbox config with docker-in-docker for inspect_ai
-        config = SandboxConfig(
-            python_packages=["inspect_ai", "anthropic", "openai"],
-            system_packages=["git"],
-            docker_in_docker=True,
-            notebook=True,
+        SandboxConfig(
+            gpu="A100",
+            gpu_count=1,
+            execution_mode=ExecutionMode.NOTEBOOK,
         )
     )
     sandbox_instance = sandbox
-    repo = sandbox.prepare_repo("safety-research/impossiblebench", install=True)
+
+    # Prepare model
+    sandbox.prepare_model(
+        "google/gemma-2b",
+        hidden=False,
+    )
+
     # Start sandbox
-    sandbox.start(name="impossible-bench")
+    sandbox.start(name="refusal-single-dir")
 
     print(f"Sandbox ready: {sandbox.sandbox_id}")
     print(f"Jupyter: {sandbox.jupyter_url}")
@@ -64,21 +69,26 @@ async def main():
         jupyter_url=session.jupyter_url
     )
 
-    # Load skills
-    print("\nLoading skills...")
-    skills = [
-        Skill.from_file("skills/research-methodology.md"),
+    # Load extensions
+    print("\nLoading extensions...")
+    extensions = [
+        Extension.from_file("skills/gpu-environment.md"),
+        Extension.from_file("skills/research-methodology.md"),
+        Extension.from_file("skills/extract-activations.md"),
+        Extension.from_file("skills/steering-hook.md"),
     ]
+
+    for ext in extensions:
+        session.add(ext)
 
     # Run agent
     print("\nRunning agent...\n")
     try:
         async for message in run_agent(
-            session=session,
+            mcp_config=session.mcp_config,
+            system_prompt=system_prompt + "\n\n" + session.system_prompt,
             task=task_text,
             provider="claude",
-            skills=skills,
-            system_prompt=system_prompt,
             verbose=True,
         ):
             # Print content

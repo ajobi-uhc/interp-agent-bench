@@ -25,6 +25,7 @@ class ModalImageBuilder:
         python_version: str = "3.11",
         docker_in_docker: bool = False,
         execution_mode: Optional["ExecutionMode"] = None,
+        notebook_packages: list[str] = None,
         custom_setup_commands: list[str] = None,
     ):
         """
@@ -35,7 +36,8 @@ class ModalImageBuilder:
             system_packages: System packages to apt-install
             python_version: Python version
             docker_in_docker: Whether to enable docker-in-docker
-            execution_mode: Execution mode (CLI, NOTEBOOK, MCP)
+            execution_mode: Execution mode (CLI, NOTEBOOK, or None for bare sandbox)
+            notebook_packages: Packages to install for notebook mode (if None, uses defaults)
             custom_setup_commands: Additional setup commands
         """
         self.python_packages = python_packages or []
@@ -43,6 +45,7 @@ class ModalImageBuilder:
         self.python_version = python_version
         self.docker_in_docker = docker_in_docker
         self.execution_mode = execution_mode
+        self.notebook_packages = notebook_packages
         self.custom_setup_commands = custom_setup_commands or []
 
         # Store dockerd script path if needed
@@ -75,9 +78,6 @@ class ModalImageBuilder:
 
             if self.execution_mode == ExecutionMode.NOTEBOOK:
                 image = self._add_notebook_support(image)
-            elif self.execution_mode == ExecutionMode.MCP:
-                # MCP mode not yet implemented
-                pass
 
         # Run custom setup commands
         if self.custom_setup_commands:
@@ -143,29 +143,36 @@ class ModalImageBuilder:
 
     def _add_notebook_support(self, image: modal.Image) -> modal.Image:
         """Add Jupyter notebook server and MCP support."""
-        # Install notebook dependencies and common ML packages
-        image = image.pip_install(
-            # Jupyter core
-            "jupyter_server",
-            "ipykernel",
-            "jupyter",
-            "jupyter_client",
-            "nbformat",
-            "tornado",
-            # MCP and utilities
-            "fastmcp",
-            "Pillow",
-            "requests",
-            # ML and data science packages
-            "torch",
-            "transformers",
-            "accelerate",
-            "pandas",
-            "matplotlib",
-            "numpy",
-            "seaborn",
-            "datasets"
-        )
+        # Use provided notebook packages or defaults
+        if self.notebook_packages is None:
+            packages = [
+                # Jupyter core
+                "jupyter_server",
+                "ipykernel",
+                "jupyter",
+                "jupyter_client",
+                "nbformat",
+                "tornado",
+                # MCP and utilities
+                "fastmcp",
+                "Pillow",
+                "requests",
+                # ML and data science packages
+                "torch",
+                "transformers",
+                "accelerate",
+                "pandas",
+                "matplotlib",
+                "numpy",
+                "seaborn",
+                "datasets"
+            ]
+        else:
+            packages = self.notebook_packages
+
+        # Install notebook dependencies
+        if packages:
+            image = image.pip_install(*packages)
 
         # Copy scribe notebook server code
         scribe_dir = Path(__file__).parent.parent.parent / "scribe"

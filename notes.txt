@@ -173,3 +173,123 @@ really have 3 seperate investigations
 level of scope is the main factor here
 environment might have another property of "scoped" if it is scoped then the specific repos or whatever will scope 
 whats available and run in a container that the agent cant access
+
+=====
+Sandbox, ScopedSandbox
+
+ScopedSandbox exposes an interface
+
+This interface can be added as mcp tools directly to the agent harness, it can be exposed in the name space of the notebook in the agents notebook session, it can be exposed as a set of skills in the agents
+working directory when its using the cli effectively installed as a plugin. 
+
+The question here really is about plugins and how the plugin is served. it can be an mcp tool, it could also be in the form of a specialized subagent, it could be a set of discoverable
+skills that are added to the cli session, it can be exposed as a namespace in the notebook it can be mcp tools directly added to teh agent harness it can be just prompts in the agent
+
+Another insight is that the session or execution mode is ALSO just a plugin in the form of how the agent connects to a sandbox, in notebook sessions it just gets an mcp server to execute on a notebook
+in a cli session same thing. alternatively it could also run in like "local" and gets a workspace folder locally and has mcp tool calls it can call that are custom and exposed
+via a scoped sandbox interface.
+
+We can also compose these two where tha gent has access to a sandbox with a notebook session and that sandbox's session? has injected into its namespace anotehr scoped sandbox's interface
+etc.
+
+----
+sandbox = Sandbox.create()
+
+//create a session (this is mcp tools for the agent!)
+session = Session("cli")
+session.connect(sandbox)
+
+agent(session) #this adds mcp tools to the agent to use
+---
+
+interface = Interface("./targets/petri_target.py")
+target = ScopedSandbox.create()
+target.serve_interface(interface)
+target.start()
+
+mcp_config = interface.as_mcp_config()
+
+session = Session(mcp_config)
+agent(session)
+
+here the agent connects to a session with only that base mcp config
+--- 
+sandbox = Sandbox.create()
+
+//create a session (this is mcp tools for the agent!)
+session = Session("cli")
+session.connect(sandbox)
+
+interface = Interface("./targets/petri_target.py")
+target = ScopedSandbox.create()
+target.serve_interface(interface)
+target.start()
+
+interface_as_notebook_namespace_injection = interface.to_notebook_injections()
+session.inject(interface_as_notebook_namespace_injection)
+
+agent(session) #now the agent has mcp tools for the cli since that is the session, and has a notebook session with injections to call the interface
+-----
+
+
+
+  from interp_infra.harness import Task, Harness
+  from interp_infra.interfaces import InterfaceSpec
+  from interp_infra.scoped import ScopedSandbox
+
+  env = Environment()
+
+  config = SandboxConfig(
+      base_image="ghcr.io/your-org/interp-base:latest",
+      packages=["torch", "transformers"],
+      execution_mode=ExecutionMode.NOTEBOOK,  # or CLI / LOCAL
+  )
+
+  sandbox = env.create_sandbox(config)
+  session = sandbox.create_session()  # gives a NotebookSession / CLISession / LocalSession
+  agent(session)
+
+ --
+
+
+from interp_infra.harness import Task, Harness
+  from interp_infra.interfaces import InterfaceSpec
+  from interp_infra.scoped import ScopedSandbox
+
+  env = Environment()
+
+  config = SandboxConfig(
+      execution_mode=ExecutionMode.NOTEBOOK,  # or CLI / LOCAL
+  )
+
+  sandbox = env.create_sandbox(config)
+  session = sandbox.create_session()  # gives a NotebookSession / CLISession / LocalSession
+  
+  //but we also want to supply this session with information on another sandbox and available methods
+
+  saScopedSandbox(repo: "some repo", run: "how to run", whatever other setup, interface=what to expose)
+
+
+session has a .add function that allows for adding interfaces into it.
+interfaces are a set of code + prompts and has both those components.
+- primarily an interface can be converted into an mcp server that is then hosted as an mcp server and is available as toool calls for the agent harness directly
+- an interface can be converted into a set of files of .md in a folder for the agent to discover in its workspace 
+- it can be loaded into the namespace of the notebook if running in notebook mode
+- can be ONLY supplied into the prompt of the harness/agent so not in the workspace in any way
+- they can be objects and 
+
+- skill files discoverable by claude
+- injected into the namespace of notebook if in notebook mode
+- as code files that can be directly callable and has a prompt com
+
+another annoying thing is that interfaces that are defined on a scoped sandbox will usually reference code etc. and are pretty fundamentally different from like
+a technique or specialized prompt + isolated set of code we want the agent to call.
+
+maybe worth seperating these. however how they are handled and added into the agent/session is pretty much the same we can do anything wth them. 
+ig the only differnece is that the code on these is a proxy server that is then handled on it directly.
+
+So theres the interface you define for a scoped sandbox
+Theres the set of code + prompts that might constitute an interp technique, or how to use a different library
+
+And theres How these are integrated into the agent/session 
+

@@ -21,9 +21,8 @@ from .handles import ModelHandle, RepoHandle
 
 class ExecutionMode(Enum):
     """Execution mode for the sandbox."""
-    CLI = "cli"  # No UI, just programmatic access via exec()
-    NOTEBOOK = "notebook"  # Jupyter notebook interface
-    MCP = "mcp"  # MCP server mode (not yet implemented)
+    CLI = "cli"  # Agent executes shell commands on sandbox
+    NOTEBOOK = "notebook"  # Agent executes code in Jupyter kernel
 
 
 @dataclass
@@ -35,31 +34,56 @@ class SandboxConfig:
     gpu: Optional[str] = None  # e.g. "H100", "A100"
     gpu_count: int = 1
     docker_in_docker: bool = False
-    execution_mode: ExecutionMode = ExecutionMode.CLI
+    execution_mode: Optional[ExecutionMode] = ExecutionMode.CLI
     debug: bool = False  # Start code-server for debugging
     timeout: int = 3600 * 24  # 24 hours
     secrets: list[str] = field(default_factory=list)  # named secrets
     env: dict[str, str] = field(default_factory=dict)
     encrypted_ports: list[int] = field(default_factory=list)  # Additional ports to expose
 
+    # Ports
+    jupyter_port: int = 8888
+    rpc_port: int = 8080
+    debug_port: int = 8080
+
+    # Timeouts
+    rpc_timeout: int = 600
+    wait_timeout: int = 300
+
+    # API Keys to pass through
+    api_key_names: list[str] = field(default_factory=lambda: [
+        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"
+    ])
+
+    # HuggingFace secret name
+    hf_secret_name: str = "huggingface-secret"
+
+    # Notebook packages (only installed if execution_mode == NOTEBOOK)
+    notebook_packages: list[str] = field(default_factory=lambda: [
+        "jupyter_server", "ipykernel", "jupyter", "jupyter_client",
+        "nbformat", "tornado", "fastmcp", "Pillow", "requests",
+        "torch", "transformers", "accelerate", "pandas",
+        "matplotlib", "numpy", "seaborn", "datasets"
+    ])
+
 
 class Sandbox:
     """
     A Modal sandbox environment.
-    
+
     Handles image building, sandbox creation, model/repo preparation.
-    
+
     Usage:
         config = SandboxConfig(
             python_packages=["torch", "transformers"],
             gpu="H100",
-            notebook=True,
+            execution_mode=ExecutionMode.NOTEBOOK,
         )
-        
+
         sandbox = Sandbox(config)
         model = sandbox.prepare_model("google/gemma-9b")
         sandbox.start(name="my-experiment")
-        
+
         # model is now downloaded to volume, sandbox is running
     """
     
@@ -94,6 +118,7 @@ class Sandbox:
             python_version=self.config.python_version,
             docker_in_docker=self.config.docker_in_docker,
             execution_mode=self.config.execution_mode,
+            notebook_packages=self.config.notebook_packages,
         )
         image = self._image_builder.build()
         
@@ -138,9 +163,9 @@ class Sandbox:
         # Add encrypted ports based on execution mode and debug flag
         encrypted_ports = list(self.config.encrypted_ports)  # Start with config
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
-            encrypted_ports.append(8888)
+            encrypted_ports.append(self.config.jupyter_port)
         if self.config.debug:
-            encrypted_ports.append(8080)
+            encrypted_ports.append(self.config.debug_port)
         if encrypted_ports:
             sandbox_kwargs["encrypted_ports"] = encrypted_ports
 
@@ -168,20 +193,20 @@ class Sandbox:
             print("  Starting jupyter server...")
             self._start_jupyter()
             tunnels = self._sandbox.tunnels()
-            self._jupyter_url = tunnels[8888].url
+            self._jupyter_url = tunnels[self.config.jupyter_port].url
             self._wait_for_jupyter()
             print(f"  Jupyter URL: {self._jupyter_url}")
-        elif self.config.execution_mode == ExecutionMode.MCP:
-            print("  MCP mode not yet implemented")
         elif self.config.execution_mode == ExecutionMode.CLI:
             print("  CLI mode - no services started")
+        elif self.config.execution_mode is None:
+            print("  Bare mode - no services started")
 
         # Start code-server if debug flag is set
         if self.config.debug:
             print("  Debug mode: Starting code-server...")
             self._start_code_server()
             tunnels = self._sandbox.tunnels()
-            self._code_server_url = tunnels[8080].url
+            self._code_server_url = tunnels[self.config.debug_port].url
             self._wait_for_code_server()
             print(f"  Code Server URL: {self._code_server_url}")
 
@@ -364,11 +389,12 @@ class Sandbox:
             except Exception:
                 print(f"  Warning: Secret '{secret_name}' not found")
         
-        # Always try HF token
-        try:
-            secrets.append(modal.Secret.from_name("huggingface-secret"))
-        except Exception:
-            pass
+        # Try HF secret if configured
+        if self.config.hf_secret_name:
+            try:
+                secrets.append(modal.Secret.from_name(self.config.hf_secret_name))
+            except Exception:
+                pass
         
         # Modal credentials for nested sandboxes (needed for IsolatedSandbox)
         if os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"):
@@ -377,9 +403,9 @@ class Sandbox:
                 "MODAL_TOKEN_SECRET": os.environ["MODAL_TOKEN_SECRET"],
             }))
 
-        # Pass common API keys from local environment
+        # Pass configured API keys from local environment
         api_keys = {}
-        for key in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"]:
+        for key in self.config.api_key_names:
             if os.getenv(key):
                 api_keys[key] = os.environ[key]
 
@@ -438,14 +464,14 @@ exec /usr/bin/dockerd --iptables=false --ip6tables=false -D
     
     def _start_jupyter(self):
         """Start jupyter server in background."""
-        jupyter_script = '''
+        jupyter_script = f'''
 import sys
 sys.path.insert(0, "/root")
 from scribe.notebook.notebook_server import ScribeServerApp
 app = ScribeServerApp()
 app.initialize([
     "--ip=0.0.0.0",
-    "--port=8888",
+    "--port={self.config.jupyter_port}",
     "--ServerApp.token=",
     "--ServerApp.password=",
     "--ServerApp.allow_root=True",
@@ -478,7 +504,7 @@ curl -fsSL https://code-server.dev/install.sh | sh > /var/log/code-server-instal
         self.exec(install_script)
 
         # Start code-server
-        self.exec('nohup code-server --bind-addr 0.0.0.0:8080 --auth none /workspace > /var/log/code-server.log 2>&1 &')
+        self.exec(f'nohup code-server --bind-addr 0.0.0.0:{self.config.debug_port} --auth none /workspace > /var/log/code-server.log 2>&1 &')
 
     def _wait_for_code_server(self, max_retries: int = 100, retry_delay: float = 2.0):
         """Wait for code-server to be ready."""

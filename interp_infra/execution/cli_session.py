@@ -1,17 +1,32 @@
 """Simple CLI session management for shell-based interactions."""
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, TYPE_CHECKING, Union
 
 from ..environment.sandbox import Sandbox
 from ..environment.handles import ModelHandle, RepoHandle
 
+if TYPE_CHECKING:
+    from ..harness.skill import Skill
+    from ..environment.scoped_sandbox import Proxy
+    from ..extension import Extension
+
 
 @dataclass
 class CLISession:
-    """A CLI session for running shell commands."""
+    """
+    A CLI session for running shell commands.
+
+    Manages both:
+    1. Environment: Prepares runtime (loads models, sets up workspace)
+    2. Configuration: Accumulates agent primitives (MCP endpoints, prompts, extensions)
+    """
     sandbox: Sandbox
     session_id: str
+
+    # Configuration accumulators
+    _mcp_endpoints: list[dict] = field(default_factory=list, init=False)
+    _prompts: list[str] = field(default_factory=list, init=False)
 
     def exec(self, cmd: str) -> str:
         """Execute a shell command in the sandbox.
@@ -41,21 +56,74 @@ class CLISession:
         """
         return self.sandbox.exec_python(code)
 
+    def load_skill(self, skill: "Skill") -> str:
+        """
+        Load skill into CLI session.
+
+        Copies skill directory to /skills if path exists,
+        writes code.py if present, returns prompt for agent.
+        """
+        # Copy skill directory if it exists
+        if skill.path:
+            skill_dir = f"/skills/{skill.name}"
+            self.exec(f"mkdir -p {skill_dir}")
+
+            # Copy all files from skill directory
+            for file in skill.path.iterdir():
+                if file.is_file():
+                    content = file.read_text()
+                    # Escape content for heredoc
+                    self.sandbox.modal_sandbox.open(f"{skill_dir}/{file.name}", "w").write(content)
+
+        # Write code.py if present
+        elif skill.code:
+            self.exec(f"mkdir -p /skills/{skill.name}")
+            self.sandbox.modal_sandbox.open(f"/skills/{skill.name}/code.py", "w").write(skill.code)
+
+        return skill.prompt
+
+    def add(self, item: Union["Proxy", "Extension"]):
+        """
+        Add extension or proxy to the session.
+
+        - Extension: Code executed via exec_python, docs added to prompt
+        - Proxy: Added as MCP tool (only way to use ScopedSandbox)
+
+        Args:
+            item: Extension (local code) or Proxy (from ScopedSandbox)
+
+        Examples:
+            session.add(steering_extension)  # Code runs via exec_python
+            session.add(target_proxy)        # chat() becomes MCP tool
+        """
+        from ..environment.scoped_sandbox import Proxy
+        from ..extension import Extension
+
+        if isinstance(item, Proxy):
+            # Proxy → MCP tool (ScopedSandbox interface)
+            self._mcp_endpoints.append(item.as_mcp_config())
+
+        elif isinstance(item, Extension):
+            # Extension → Execute code + docs to prompt
+            if item.code:
+                self.exec_python(item.code)
+            if item.docs:
+                self._prompts.append(item.docs)
+
+        else:
+            raise TypeError(f"Expected Proxy or Extension, got {type(item)}")
+
     @property
     def mcp_config(self) -> dict:
-        """MCP config for connecting an agent.
-
-        Returns a config for an MCP server that provides CLI tools:
-        - run_command: Execute shell commands
-        - run_python: Execute Python code
-        - read_file: Read file contents
-        - write_file: Write file contents
-        - list_dir: List directory contents
         """
-        # For now, we'll use a simple approach where the agent
-        # can run commands directly. In the future, we can create
-        # a dedicated CLI MCP server similar to the notebook one.
-        return {
+        MCP configuration for connecting agents.
+
+        Includes:
+        - CLI tools (run_command, run_python, etc.)
+        - Any added proxies/extensions exposed as MCP
+        """
+        # Start with CLI's built-in MCP
+        config = {
             "cli": {
                 "type": "stdio",
                 "command": "python",
@@ -65,6 +133,19 @@ class CLISession:
                 }
             }
         }
+
+        # Add any additional MCP endpoints
+        for endpoint in self._mcp_endpoints:
+            config.update(endpoint)
+
+        return config
+
+    @property
+    def system_prompt(self) -> str:
+        """Accumulated system prompt from extensions."""
+        if not self._prompts:
+            return ""
+        return "\n\n".join(self._prompts)
 
 
 def create_cli_session(

@@ -1,6 +1,6 @@
 """Environment layer - Sandboxes, models, repos."""
 
 from .sandbox import Sandbox, SandboxConfig, ExecutionMode
-from .isolated_sandbox import IsolatedSandbox
+from .scoped_sandbox import ScopedSandbox
 
-__all__ = ["Sandbox", "SandboxConfig", "ExecutionMode", "IsolatedSandbox"]
+__all__ = ["Sandbox", "SandboxConfig", "ExecutionMode", "ScopedSandbox"]

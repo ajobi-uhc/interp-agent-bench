@@ -1,4 +1,4 @@
-"""Isolated sandbox for serving interfaces via RPC."""
+"""Scoped sandbox for serving interfaces via RPC."""
 
 import json
 import time
@@ -13,16 +13,17 @@ from .sandbox import Sandbox, SandboxConfig, ExecutionMode
 
 @dataclass
 class Proxy:
-    """Proxy to an isolated sandbox's RPC interface."""
+    """Proxy to a scoped sandbox's RPC interface."""
     url: str
     functions: list[str]
-    
+    timeout: int = 600  # Default timeout for RPC calls
+
     def call(self, fn: str, *args, **kwargs):
-        """Call a function on the isolated sandbox."""
+        """Call a function on the scoped sandbox."""
         resp = requests.post(
             self.url,
             json={"fn": fn, "args": args, "kwargs": kwargs},
-            timeout=600,
+            timeout=self.timeout,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -41,7 +42,7 @@ class Proxy:
             "import requests as _proxy_requests",
             f'_PROXY_URL = "{self.url}"',
         ]
-        
+
         for fn in self.functions:
             lines.append(f'''
 def {fn}(*args, **kwargs):
@@ -51,81 +52,110 @@ def {fn}(*args, **kwargs):
         raise RuntimeError(data.get("error", "Unknown error"))
     return data["result"]
 ''')
-        
+
         return "\n".join(lines)
 
+    def as_mcp_config(self, name: str = "interface") -> dict:
+        """
+        Generate MCP server configuration for this proxy.
 
-class IsolatedSandbox(Sandbox):
+        Returns a config that spawns an MCP server (locally) that wraps
+        the RPC endpoint. The MCP server translates tool calls into HTTP
+        requests to this proxy's RPC endpoint.
+
+        Args:
+            name: Name for the MCP server
+
+        Returns:
+            MCP configuration dict
+        """
+        return {
+            name: {
+                "type": "stdio",
+                "command": "python",
+                "args": ["-m", "interp_infra.mcp.interface_mcp_server"],
+                "env": {
+                    "RPC_URL": self.url,
+                    "FUNCTIONS": json.dumps(self.functions)
+                }
+            }
+        }
+
+
+class ScopedSandbox(Sandbox):
     """
-    Sandbox that serves an isolated interface via RPC.
-    
+    Sandbox that serves a scoped interface via RPC.
+
     Usage:
         # Serve a file
-        isolated = IsolatedSandbox(SandboxConfig())
-        isolated.serve_file("./interface.py")
-        proxy = isolated.start()
-        
+        scoped = ScopedSandbox(SandboxConfig())
+        scoped.serve_file("./interface.py")
+        proxy = scoped.start()
+
         # Serve a repo
-        isolated = IsolatedSandbox(SandboxConfig())
-        isolated.serve_repo("github.com/org/api", install="pip install -e .", run="python server.py", functions=["chat"])
-        proxy = isolated.start()
-        
+        scoped = ScopedSandbox(SandboxConfig())
+        scoped.serve_repo("github.com/org/api", install="pip install -e .", run="python server.py", functions=["chat"])
+        proxy = scoped.start()
+
         # Bare mode
-        isolated = IsolatedSandbox(SandboxConfig())
-        isolated.start()
-        isolated.exec("python my_server.py &")
-        proxy = isolated.create_proxy(port=8080, functions=["chat"])
+        scoped = ScopedSandbox(SandboxConfig())
+        scoped.start()
+        scoped.exec("python my_server.py &")
+        proxy = scoped.create_proxy(port=8080, functions=["chat"])
     """
     
     def __init__(self, config: SandboxConfig):
-        config.execution_mode = ExecutionMode.CLI
+        config.execution_mode = None  # ScopedSandbox manages its own RPC server
         super().__init__(config)
-        
-        self._rpc_port: int = 8080
+
+        self._rpc_port: int = config.rpc_port
         self._proxy: Optional[Proxy] = None
         self._specified_functions: Optional[list[str]] = None
         self._serve_file_code: Optional[str] = None
         self._serve_repo_config: Optional[dict] = None
     
-    def serve_file(self, path: str | Path, port: int = 8080, functions: list[str] = None) -> "IsolatedSandbox":
+    def serve_file(self, path: str | Path, port: int = None, functions: list[str] = None) -> "ScopedSandbox":
         """Serve a Python file via RPC. Top-level functions become the interface."""
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
-        
+
         self._serve_file_code = path.read_text()
-        self._rpc_port = port
+        if port is not None:
+            self._rpc_port = port
         self._specified_functions = functions
         return self
-    
-    def serve_code(self, code: str, port: int = 8080, functions: list[str] = None) -> "IsolatedSandbox":
+
+    def serve_code(self, code: str, port: int = None, functions: list[str] = None) -> "ScopedSandbox":
         """Serve inline Python code via RPC."""
         self._serve_file_code = code
-        self._rpc_port = port
+        if port is not None:
+            self._rpc_port = port
         self._specified_functions = functions
         return self
-    
+
     def serve_repo(
         self,
         url: str,
         install: str = None,
         run: str = None,
         interface: str = None,
-        port: int = 8080,
+        port: int = None,
         functions: list[str] = None,
-    ) -> "IsolatedSandbox":
+    ) -> "ScopedSandbox":
         """Clone a repo and serve via RPC."""
         if not run and not interface:
             raise ValueError("Provide run= or interface=")
         if run and not functions:
             raise ValueError("run= requires functions=")
-        
+
         self._serve_repo_config = {"url": url, "install": install, "run": run, "interface": interface}
-        self._rpc_port = port
+        if port is not None:
+            self._rpc_port = port
         self._specified_functions = functions
         return self
     
-    def start(self, name: str = "isolated") -> "Proxy | IsolatedSandbox":
+    def start(self, name: str = "scoped") -> "Proxy | ScopedSandbox":
         """Start sandbox. Returns Proxy if serving, self if bare mode."""
         is_serving = self._serve_file_code or self._serve_repo_config
         
@@ -231,21 +261,24 @@ HTTPServer(("0.0.0.0", {self._rpc_port}), Handler).serve_forever()
         """Create proxy to HTTP endpoint."""
         if not self._sandbox:
             raise RuntimeError("Sandbox not started")
-        
+
         tunnels = self._sandbox.tunnels()
         if port not in tunnels:
             raise RuntimeError(f"Port {port} not exposed")
-        
+
         url = tunnels[port].url
-        
+
         if functions is None:
             resp = requests.get(url, timeout=10)
             functions = resp.json().get("functions", [])
-        
-        return Proxy(url=url, functions=functions)
+
+        return Proxy(url=url, functions=functions, timeout=self.config.rpc_timeout)
     
-    def _wait_for_port(self, port: int, max_retries: int = 60):
+    def _wait_for_port(self, port: int, max_retries: int = None):
         """Wait for server on port."""
+        if max_retries is None:
+            max_retries = self.config.wait_timeout // 5  # 5 second intervals
+
         for _ in range(max_retries):
             try:
                 url = self._sandbox.tunnels()[port].url
@@ -253,7 +286,7 @@ HTTPServer(("0.0.0.0", {self._rpc_port}), Handler).serve_forever()
                     return
             except:
                 pass
-            time.sleep(1)
+            time.sleep(5)
         raise RuntimeError(f"Server on {port} failed. Logs:\n{self.exec('cat /var/log/rpc.log /var/log/server.log 2>/dev/null || true')}")
     
     @property
