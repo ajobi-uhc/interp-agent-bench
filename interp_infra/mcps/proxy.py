@@ -1,47 +1,28 @@
-"""Generic MCP server that wraps RPC endpoints.
-
-This MCP server dynamically creates tools for each function exposed by
-a ScopedSandbox's RPC endpoint. It runs locally and translates MCP tool
-calls into HTTP requests to the remote RPC server.
-
-Environment variables:
-    RPC_URL: URL of the RPC endpoint (e.g., https://xyz.modal.run)
-    FUNCTIONS: JSON list of function names to expose (e.g., ["chat", "reset"])
-
-Usage:
-    Called automatically by MCP client via:
-    python -m interp_infra.mcp.interface_mcp_server
-"""
+"""Generic MCP server that wraps RPC endpoints."""
 
 import os
 import json
 import sys
 import asyncio
-from typing import Any
 
 import requests
 
 
 def main():
     """Run the MCP server."""
-    # Import here to avoid issues if mcp not installed
     try:
         from mcp.server import Server
         from mcp.server.stdio import stdio_server
+        from mcp.types import Tool, TextContent
     except ImportError:
         print("Error: mcp package not installed. Install with: pip install mcp", file=sys.stderr)
         sys.exit(1)
 
-    # Read configuration from environment
     rpc_url = os.environ.get("RPC_URL")
     functions_json = os.environ.get("FUNCTIONS")
 
-    if not rpc_url:
-        print("Error: RPC_URL environment variable not set", file=sys.stderr)
-        sys.exit(1)
-
-    if not functions_json:
-        print("Error: FUNCTIONS environment variable not set", file=sys.stderr)
+    if not rpc_url or not functions_json:
+        print("Error: RPC_URL and FUNCTIONS environment variables required", file=sys.stderr)
         sys.exit(1)
 
     try:
@@ -50,31 +31,34 @@ def main():
         print(f"Error: Invalid FUNCTIONS JSON: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Create MCP server
+    # Fetch schemas from RPC server
+    try:
+        resp = requests.get(rpc_url, timeout=10)
+        resp.raise_for_status()
+        schemas = resp.json().get("schemas", {})
+    except Exception as e:
+        print(f"Warning: Could not fetch schemas from RPC server: {e}", file=sys.stderr)
+        schemas = {}
+
     server = Server("interface")
 
-    # Handler to list available tools
     @server.list_tools()
     async def list_tools():
-        from mcp.types import Tool
         return [
             Tool(
                 name=fn_name,
-                description=f"Call {fn_name}() on the remote interface",
-                inputSchema={
+                description=schemas.get(fn_name, {}).get("description", f"Call {fn_name}()"),
+                inputSchema=schemas.get(fn_name, {}).get("inputSchema", {
                     "type": "object",
                     "properties": {},
                     "additionalProperties": True
-                }
+                })
             )
             for fn_name in functions
         ]
 
-    # Handler to call tools
     @server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list:
-        from mcp.types import TextContent
-
         if name not in functions:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -94,26 +78,16 @@ def main():
                 raise RuntimeError(error)
 
             result = data.get("result")
-
-            # Convert result to string for MCP
-            if isinstance(result, (dict, list)):
-                result_str = json.dumps(result, indent=2)
-            else:
-                result_str = str(result)
+            result_str = json.dumps(result, indent=2) if isinstance(result, (dict, list)) else str(result)
 
             return [TextContent(type="text", text=result_str)]
 
         except requests.RequestException as e:
             raise RuntimeError(f"RPC request failed: {e}")
 
-    # Run stdio server
     async def run():
         async with stdio_server() as (read_stream, write_stream):
-            await server.run(
-                read_stream,
-                write_stream,
-                server.create_initialization_options()
-            )
+            await server.run(read_stream, write_stream, server.create_initialization_options())
 
     asyncio.run(run())
 

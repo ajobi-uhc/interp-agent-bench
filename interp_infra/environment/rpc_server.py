@@ -1,23 +1,29 @@
 """RPC server for serving Python functions over HTTP."""
 
 import json
+import os
 import sys
 import traceback
+import inspect
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Dict, Callable, Any
+from typing import Dict, Callable, get_type_hints, get_origin
 
 
 class RPCHandler(BaseHTTPRequestHandler):
     """HTTP handler for RPC requests."""
 
     functions: Dict[str, Callable] = {}
+    schemas: Dict[str, dict] = {}
 
     def do_GET(self):
-        """List available functions."""
+        """List available functions with schemas."""
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps({"functions": list(self.functions.keys())}).encode())
+        self.wfile.write(json.dumps({
+            "functions": list(self.functions.keys()),
+            "schemas": self.schemas
+        }).encode())
 
     def do_POST(self):
         """Execute a function call."""
@@ -46,51 +52,145 @@ class RPCHandler(BaseHTTPRequestHandler):
         pass
 
 
-def serve(port: int, user_code: str):
-    """
-    Start RPC server with user code.
+TYPE_MAP = {
+    int: "integer",
+    float: "number",
+    str: "string",
+    bool: "boolean",
+    list: "array",
+    dict: "object",
+}
 
-    Args:
-        port: Port to listen on
-        user_code: Python code to execute (defines functions to serve)
-    """
+
+def python_type_to_json_type(hint) -> str:
+    """Convert Python type hint to JSON schema type."""
+    origin = get_origin(hint)
+    check_type = origin if origin else hint
+
+    for py_type, json_type in TYPE_MAP.items():
+        if check_type is py_type:
+            return json_type
+
+    return "string"
+
+
+def build_function_schema(func: Callable) -> dict:
+    """Build JSON schema for a function."""
+    sig = inspect.signature(func)
+    doc = inspect.getdoc(func) or f"Call {func.__name__}()"
+
+    properties = {}
+    required = []
+
     try:
-        print(f"[RPC] Starting server on port {port}", file=sys.stderr)
+        hints = get_type_hints(func)
+    except (NameError, AttributeError):
+        hints = {}
 
-        # Registry for exposed functions
-        _exposed_functions = {}
+    for param_name, param in sig.parameters.items():
+        if param_name in ('self', 'cls'):
+            continue
 
-        # Define the @expose decorator
-        def expose(func):
-            """Decorator to mark functions for RPC exposure."""
-            _exposed_functions[func.__name__] = func
-            return func
+        param_type = python_type_to_json_type(hints.get(param_name, str))
+        properties[param_name] = {"type": param_type}
 
-        print(f"[RPC] Executing user code...", file=sys.stderr)
+        if param.default == inspect.Parameter.empty:
+            required.append(param_name)
 
-        # Execute user code with decorator available
-        namespace = {
-            "__name__": "__main__",
-            "expose": expose,  # Inject decorator
+    return {
+        "description": doc,
+        "inputSchema": {
+            "type": "object",
+            "properties": properties,
+            "required": required
         }
-        exec(user_code, namespace)
+    }
 
-        # Use exposed functions
-        RPCHandler.functions = _exposed_functions
 
-        if not _exposed_functions:
-            raise RuntimeError("No functions exposed with @expose decorator")
+def load_model(model_name: str, model_info: dict):
+    """Load a model and return (model, tokenizer)."""
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
-        print(f"[RPC] Exposed functions: {list(_exposed_functions.keys())}", file=sys.stderr)
+    model_path = model_info["volume_path"]
+    is_peft = model_info.get("is_peft", False)
 
-        # Start server
-        print(f"[RPC] Server listening on 0.0.0.0:{port}", file=sys.stderr)
-        HTTPServer(("0.0.0.0", port), RPCHandler).serve_forever()
-    except Exception as e:
-        print(f"[RPC] ERROR: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        raise
+    if is_peft:
+        from peft import AutoPeftModelForCausalLM
+        model = AutoPeftModelForCausalLM.from_pretrained(
+            model_path,
+            device_map="auto",
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True
+        )
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            device_map="auto",
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True
+        )
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+
+    return model, tokenizer
+
+
+def serve(port: int, user_code: str):
+    """Start RPC server with user code."""
+    print(f"Starting RPC server on port {port}", file=sys.stderr)
+
+    _exposed_functions = {}
+
+    def expose(func):
+        _exposed_functions[func.__name__] = func
+        return func
+
+    # Load models from env var
+    models, tokenizers = {}, {}
+    prepared = os.environ.get("PREPARED_MODELS", "{}")
+
+    if prepared != "{}":
+        print("Loading models...", file=sys.stderr)
+        for name, info in json.loads(prepared).items():
+            try:
+                model, tokenizer = load_model(name, info)
+                models[name] = model
+                tokenizers[name] = tokenizer
+                print(f"  Loaded: {name}", file=sys.stderr)
+            except Exception as e:
+                print(f"  Failed to load {name}: {e}", file=sys.stderr)
+                models[name] = tokenizers[name] = None
+
+    # Execute user code
+    namespace = {
+        "__name__": "__main__",
+        "expose": expose,
+        "models": models,
+        "tokenizers": tokenizers
+    }
+    exec(user_code, namespace)
+
+    if not _exposed_functions:
+        raise RuntimeError("No functions exposed with @expose decorator")
+
+    # Build schemas
+    schemas = {}
+    for name, func in _exposed_functions.items():
+        try:
+            schemas[name] = build_function_schema(func)
+        except Exception:
+            schemas[name] = {
+                "description": f"Call {name}()",
+                "inputSchema": {"type": "object", "properties": {}}
+            }
+
+    RPCHandler.functions = _exposed_functions
+    RPCHandler.schemas = schemas
+
+    print(f"Exposed functions: {list(_exposed_functions.keys())}", file=sys.stderr)
+    print(f"Listening on 0.0.0.0:{port}", file=sys.stderr)
+    HTTPServer(("0.0.0.0", port), RPCHandler).serve_forever()
 
 
 if __name__ == "__main__":

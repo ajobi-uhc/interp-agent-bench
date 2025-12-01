@@ -3,7 +3,7 @@
 from typing import AsyncIterator
 from datetime import datetime
 
-from ..logging import log_tool_call, log_tool_done, log_tool_error, log_tool_result, log_output, print_start, print_done
+from ..logging import log_tool_call, log_tool_done, log_tool_error, log_tool_result, log_output, print_start, print_done, log_available_tools
 
 
 async def run_claude(
@@ -39,6 +39,10 @@ async def run_claude(
     tool_times = {}  # Track tool start times
 
     async with ClaudeSDKClient(options=options) as client:
+        # Log available tools
+        if hasattr(client, 'tools') and client.tools:
+            log_available_tools(client.tools)
+
         await client.query(task)
 
         async for message in client.receive_response():
