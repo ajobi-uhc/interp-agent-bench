@@ -128,6 +128,39 @@ class Sandbox:
         self.exec(f"docker run -d --name {repo_handle.container_name} {repo_handle.container_name}")
         repo_handle.container_running = True
 
+    def write_file(self, path: str, content: str) -> None:
+        """Write a file to the sandbox, creating parent directories as needed."""
+        if not self._sandbox:
+            raise RuntimeError("Sandbox not started")
+
+        # Ensure parent directories exist
+        parent_dir = "/".join(path.split("/")[:-1])
+        if parent_dir:
+            self.ensure_dir(parent_dir)
+
+        # Write the file
+        with self._sandbox.open(path, "w") as f:
+            f.write(content)
+
+    def ensure_dir(self, path: str) -> None:
+        """Ensure a directory exists, creating parent directories as needed."""
+        if not self._sandbox:
+            raise RuntimeError("Sandbox not started")
+
+        # Build list of directories to create from root to leaf
+        dirs_to_create = []
+        current = path
+        while current and current != "/":
+            dirs_to_create.append(current)
+            current = "/".join(current.split("/")[:-1])
+
+        # Create directories from root to leaf
+        for d in reversed(dirs_to_create):
+            try:
+                self._sandbox.mkdir(d)
+            except Exception:
+                pass  # Directory already exists
+
     def terminate(self):
         """Terminate the sandbox."""
         if self._sandbox:

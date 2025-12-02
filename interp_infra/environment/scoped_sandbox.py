@@ -194,10 +194,17 @@ class ScopedSandbox(Sandbox):
             rpc_url=self._rpc_url,
         )
 
+        # Generate documentation for the library functions
+        docs = generate_rpc_prompt(
+            name=name,
+            source_code=source_code,
+            rpc_url=self._rpc_url,
+        )
+
         return Library(
             name=name,
             files={f"{name}.py": client_code},
-            docs=f"Remote library: {name} (RPC: {self._rpc_url})",
+            docs=docs,
         )
 
     def _as_prompt(self, name: str, source_code: str) -> str:

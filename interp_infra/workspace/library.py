@@ -214,16 +214,12 @@ class Library:
             # Write single file to /workspace/{name}.py
             file_path = f"/workspace/{self.name}.py"
             code = list(self.files.values())[0]
-            with session.sandbox.modal_sandbox.open(file_path, "w") as f:
-                f.write(code)
+            session.sandbox.write_file(file_path, code)
         else:
             # Write package directory to /workspace/{name}/
             for rel_path, code in self.files.items():
                 file_path = f"/workspace/{self.name}/{rel_path}"
-                # Create parent directories
-                session.sandbox.exec(f"mkdir -p $(dirname {file_path})")
-                with session.sandbox.modal_sandbox.open(file_path, "w") as f:
-                    f.write(code)
+                session.sandbox.write_file(file_path, code)
 
         # Ensure /workspace is in Python path (usually is by default)
         session.exec("import sys; sys.path.insert(0, '/workspace') if '/workspace' not in sys.path else None", hidden=True)
@@ -234,15 +230,12 @@ class Library:
             # Write single file
             file_path = f"/workspace/{self.name}.py"
             code = list(self.files.values())[0]
-            with session.sandbox.modal_sandbox.open(file_path, "w") as f:
-                f.write(code)
+            session.sandbox.write_file(file_path, code)
         else:
             # Write package directory
             for rel_path, code in self.files.items():
                 file_path = f"/workspace/{self.name}/{rel_path}"
-                session.sandbox.exec(f"mkdir -p $(dirname {file_path})")
-                with session.sandbox.modal_sandbox.open(file_path, "w") as f:
-                    f.write(code)
+                session.sandbox.write_file(file_path, code)
 
     def _install_local(self, session):
         """Install in local session by writing to local workspace."""

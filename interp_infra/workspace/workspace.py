@@ -62,6 +62,10 @@ class Workspace:
     # Custom initialization code (overrides defaults)
     custom_init_code: Optional[str] = None
 
+    # Model loading configuration
+    preload_models: bool = True
+    hidden_model_loading: bool = True
+
     def setup_in(self, session: "SessionBase"):
         """
         Setup this workspace in a session.

@@ -734,4 +734,18 @@ async def server_status() -> str:
 
 # Main entry point for STDIO transport
 if __name__ == "__main__":
+    # Auto-attach to session if SCRIBE_SESSION_ID is set
+    session_id = os.environ.get("SCRIBE_SESSION_ID")
+    if session_id and "SCRIBE_URL" in os.environ:
+        jupyter_url = os.environ["SCRIBE_URL"]
+        notebook_dir = os.environ.get("NOTEBOOK_OUTPUT_DIR", "./outputs")
+
+        # Register the session automatically
+        _sessions[session_id] = {
+            "jupyter_url": jupyter_url,
+            "notebook_dir": notebook_dir
+        }
+        _active_sessions.add(session_id)
+        print(f"[INFO] Auto-attached to session {session_id} at {jupyter_url}", file=sys.stderr)
+
     mcp.run(transport="stdio")

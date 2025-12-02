@@ -43,8 +43,7 @@ class CLISession(SessionBase):
             raise FileNotFoundError(f"File not found: {src}")
 
         content = src_path.read_text()
-        with self.sandbox.modal_sandbox.open(dest, "w") as f:
-            f.write(content)
+        self.sandbox.write_file(dest, content)
 
     def _copy_skill_dir(self, skill_dir: str):
         """Copy skill directory to workspace/.claude/skills/."""
@@ -53,14 +52,12 @@ class CLISession(SessionBase):
             raise FileNotFoundError(f"Skill directory not found: {skill_dir}")
 
         dest = f"{self.workspace_path}/.claude/skills/{src_path.name}"
-        self.exec(f"mkdir -p {dest}")
 
         # Copy SKILL.md if exists
         skill_md = src_path / "SKILL.md"
         if skill_md.exists():
             content = skill_md.read_text()
-            with self.sandbox.modal_sandbox.open(f"{dest}/SKILL.md", "w") as f:
-                f.write(content)
+            self.sandbox.write_file(f"{dest}/SKILL.md", content)
 
     def _execute_code(self, code: str):
         """Execute code in sandbox."""
@@ -95,9 +92,10 @@ def create_cli_session(
         workspace_path=Path("/workspace"),
     )
 
-    # Prepare models
-    for handle in sandbox._model_handles:
-        _prepare_model(session, handle)
+    # Prepare models (if workspace allows)
+    if workspace is None or workspace.preload_models:
+        for handle in sandbox._model_handles:
+            _prepare_model(session, handle)
 
     # Prepare repos
     for handle in sandbox._repo_handles:
@@ -144,7 +142,7 @@ if hasattr({var}, "config"):
 '''
 
     script_name = "load_model.py" if handle.hidden else f"load_{handle.name.replace('/', '_')}.py"
-    session.sandbox.modal_sandbox.open(f"/workspace/{script_name}", "w").write(script)
+    session.sandbox.write_file(f"/workspace/{script_name}", script)
     session.exec(f"chmod +x /workspace/{script_name}")
 
 
@@ -173,8 +171,8 @@ if __name__ == "__main__":
         sys.exit(1)
     print(container_exec(" ".join(sys.argv[1:])))
 '''
-        session.sandbox.modal_sandbox.open(f"/workspace/exec_{handle.container_name}.py", "w").write(helper)
+        session.sandbox.write_file(f"/workspace/exec_{handle.container_name}.py", helper)
         session.exec(f"chmod +x /workspace/exec_{handle.container_name}.py")
         readme += f"Helper: /workspace/exec_{handle.container_name}.py\n"
 
-    session.sandbox.modal_sandbox.open(f"/workspace/README_{repo_name}.txt", "w").write(readme)
+    session.sandbox.write_file(f"/workspace/README_{repo_name}.txt", readme)

@@ -19,6 +19,7 @@ class NotebookSession(SessionBase):
     session_id: str
     jupyter_url: str
     sandbox: Sandbox
+    notebook_dir: str = "./outputs"
 
     def exec(self, code: str, hidden: bool = False) -> dict:
         """Execute code in the notebook kernel."""
@@ -75,6 +76,37 @@ dest.parent.mkdir(parents=True, exist_ok=True)
         """Execute code in notebook kernel."""
         self.exec(code, hidden=True)
 
+    @property
+    def mcp_config(self) -> dict:
+        """MCP configuration for connecting agents to this notebook."""
+        return {
+            "notebooks": {
+                "type": "stdio",
+                "command": "python",
+                "args": ["-m", "scribe.notebook.notebook_mcp_server"],
+                "env": {
+                    "SCRIBE_URL": self.jupyter_url,
+                    "NOTEBOOK_OUTPUT_DIR": self.notebook_dir,
+                    "SCRIBE_SESSION_ID": self.session_id,
+                }
+            }
+        }
+
+    @property
+    def model_info_text(self) -> str:
+        """Generate formatted text describing pre-loaded models."""
+        if not self.sandbox._model_handles:
+            return ""
+
+        lines = ["### Pre-loaded Models", "The following models are already loaded in the kernel:"]
+        for handle in self.sandbox._model_handles:
+            model_name = handle.name if not handle.hidden else "<hidden>"
+            lines.append(f"- `{handle.var_name}`: {model_name}")
+            tokenizer_var = f"{handle.var_name}_tokenizer" if handle.var_name != "model" else "tokenizer"
+            lines.append(f"- `{tokenizer_var}`: Tokenizer")
+        lines.append("\n**Do NOT reload these models - they are already available.**")
+        return "\n".join(lines)
+
 
 def create_notebook_session(
     sandbox: Sandbox,
@@ -110,11 +142,14 @@ def create_notebook_session(
         jupyter_url=sandbox.jupyter_url,
         sandbox=sandbox,
         workspace_path=Path("/workspace"),
+        notebook_dir=notebook_dir,
     )
 
-    # Load models into kernel
-    for handle in sandbox._model_handles:
-        _load_model(session, handle)
+    # Load models into kernel (if workspace allows)
+    if workspace is None or workspace.preload_models:
+        hidden = workspace.hidden_model_loading if workspace else True
+        for handle in sandbox._model_handles:
+            _load_model(session, handle, hidden=hidden)
 
     # Setup repos
     for handle in sandbox._repo_handles:
@@ -128,8 +163,14 @@ def create_notebook_session(
     return session
 
 
-def _load_model(session: NotebookSession, handle: ModelHandle):
-    """Load model into kernel namespace."""
+def _load_model(session: NotebookSession, handle: ModelHandle, hidden: bool = True):
+    """Load model into kernel namespace.
+
+    Args:
+        session: The notebook session
+        handle: Model handle with metadata
+        hidden: Whether to hide the loading cell (default True)
+    """
     var_info = f" as '{handle.var_name}'" if handle.var_name != "model" else ""
     model_name = "<hidden>" if handle.hidden else handle.name
     print(f"  Loading model{var_info}: {model_name}")
@@ -145,12 +186,20 @@ _base = AutoModelForCausalLM.from_pretrained("{handle.base_model_path}", device_
 {var} = PeftModel.from_pretrained(_base, "{handle.volume_path}")
 {tok_var} = AutoTokenizer.from_pretrained("{handle.base_model_path}")
 del _base
+
+# Verify model is loaded and ready
+_ = {var}.device
+print(f"✓ Model loaded: {{type({var}).__name__}} on {{{var}.device}}")
 '''
     else:
         code = f'''from transformers import AutoModelForCausalLM, AutoTokenizer
 
 {var} = AutoModelForCausalLM.from_pretrained("{handle.volume_path}", device_map="auto", torch_dtype="auto")
 {tok_var} = AutoTokenizer.from_pretrained("{handle.volume_path}")
+
+# Verify model is loaded and ready
+_ = {var}.device
+print(f"✓ Model loaded: {{type({var}).__name__}} on {{{var}.device}}")
 '''
 
     if handle.hidden:
@@ -159,7 +208,7 @@ if hasattr({var}, "config"):
     {var}.config.name_or_path = "model"
 '''
 
-    session.exec(code, hidden=True)
+    session.exec(code, hidden=hidden)
 
 
 def _setup_repo(session: NotebookSession, handle: RepoHandle):

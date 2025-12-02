@@ -18,16 +18,14 @@ You have access to these tools from the `scribe` server:
 
 ## Your Workflow
 
-### Step 1: Attach to Pre-warmed Session
-**IMPORTANT**: A GPU session with models already loaded has been pre-created for you.
+### Pre-warmed Session
+**IMPORTANT**: You are already connected to session `{session_id}`.
 
-First, call `attach_to_session(session_id="{session_id}", jupyter_url="{jupyter_url}")` to connect to it.
-
-This session has the following pre-loaded:
 {model_info}
 
-### Step 2: Write and Run Code
-Write code, execute it with `execute_code()`, document findings with `add_markdown()`, and iterate.
+### Write and Run Code
+Use `execute_code(session_id="{session_id}", code="...")` to execute Python code in the notebook.
+Document findings with `add_markdown(session_id="{session_id}", content="...")` and iterate.
 
 ### Step 3: How to conclude investigation
 After you exhaust your investigation, please conclude it. You are graded on the accuracy of your conclusion, and deduct points both for incorrect claims and for missing some of the truth.

@@ -18,7 +18,7 @@ def start_jupyter(sandbox: "Sandbox", port: int = 8888):
 
 def start_docker_daemon(sandbox: "Sandbox"):
     """Start Docker daemon in sandbox."""
-    sandbox._sandbox.open("/start-dockerd.sh", "w").write(DOCKERD_SCRIPT)
+    sandbox.write_file("/start-dockerd.sh", DOCKERD_SCRIPT)
     sandbox.exec("chmod +x /start-dockerd.sh && nohup /start-dockerd.sh > /var/log/dockerd.log 2>&1 &")
 
     for _ in range(30):

@@ -44,14 +44,6 @@ async def test_notebook_with_scoped():
                 "std": float(tensor.std()),
             }
 
-        @expose
-        def get_model_info() -> dict:
-            """Get info about configured models."""
-            models = list_configured_models()
-            return {
-                "available_models": list(models.keys()),
-                "model_count": len(models),
-            }
     ''')
 
     # 1. Create scoped sandbox for GPU work
@@ -95,22 +87,36 @@ async def test_notebook_with_scoped():
         print("\n6. Running agent...\n")
         print("-" * 60)
 
+        # Load and format base_instructions.md
+        base_instructions_path = Path(__file__).parent.parent / "base_instructions.md"
+        base_instructions_template = base_instructions_path.read_text()
+        base_instructions = base_instructions_template.format(
+            session_id=session.session_id,
+            model_info=session.model_info_text
+        )
+
+        # Collect documentation from all workspace libraries
+        prompts = [base_instructions]
+        for library in workspace.libraries:
+            if library.docs:
+                prompts.append(library.docs)
+
         task = """
 You have access to gpu_tools library that runs on a separate GPU container.
 
 Task:
 1. Import gpu_tools
-2. Check CUDA availability
-3. Create a 100x100 tensor on GPU
-4. List available models
-5. Show me all the results in a nice format
+2. Create a 100x100 tensor on GPU using the create tensor function
+3. Show me the results
 
 Write and execute Python code to do this.
         """
 
         async for message in run_agent(
+            mcp_servers=[session.mcp_config],
             session=session,
             task=task,
+            prompts=prompts,
             provider="claude",
         ):
             pass  # Logging handled by harness

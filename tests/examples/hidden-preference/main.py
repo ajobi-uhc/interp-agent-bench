@@ -1,7 +1,8 @@
-"""Refusal Direction Ablation - Agent Investigation Example.
+"""Hidden Preference Investigation - Agent Investigation Example.
 
 This example demonstrates:
 - Agent running in notebook session (GPU sandbox)
+- PEFT model loading (hidden from agent)
 - Libraries available in execution context (steering_hook, extract_activations)
 - Skills loaded for agent guidance (gpu-environment)
 - Research methodology provided as prompt
@@ -21,26 +22,31 @@ from interp_infra.harness import run_agent
 
 async def main():
     print("=" * 80)
-    print("Refusal Direction Ablation Investigation")
+    print("Hidden Preference Investigation")
     print("=" * 80)
 
     example_dir = Path(__file__).parent
     shared_skills = example_dir.parent / "skills"
 
     # ========================================================================
-    # 1. Create Sandbox with Model
+    # 1. Create Sandbox with PEFT Model
     # ========================================================================
     print("\n[1/5] Creating GPU sandbox...")
 
     sandbox = Sandbox(SandboxConfig(
         gpu="A100",
         execution_mode=ExecutionMode.NOTEBOOK,
-        models=[ModelConfig(name="google/gemma-2b", hidden=False)],
-        python_packages=["torch", "transformers", "accelerate", "datasets"],
+        models=[ModelConfig(
+            name="bcywinski/gemma-2-9b-it-user-female",
+            base_model="google/gemma-2-9b-it",
+            is_peft=True,
+            hidden=True
+        )],
+        python_packages=["torch", "transformers", "accelerate", "datasets", "peft"],
         secrets=["huggingface-secret"],
     ))
 
-    sandbox.start(name="refusal-investigation")
+    sandbox.start(name="hidden-preference-investigation")
     print(f"  ✓ Sandbox ready")
     print(f"  Jupyter: {sandbox.jupyter_url}")
 
@@ -65,7 +71,7 @@ async def main():
         workspace = Workspace(
             libraries=[steering_lib, activations_lib],
             skill_dirs=[str(shared_skills / "gpu-environment")],
-            hidden_model_loading=False,  # Show model loading in notebook
+            hidden_model_loading=True,  # Show model loading in notebook
         )
 
         print(f"  ✓ Libraries: steering_hook, extract_activations")
@@ -79,8 +85,8 @@ async def main():
         session = create_notebook_session(
             sandbox=sandbox,
             workspace=workspace,
-            name="refusal-notebook",
-            notebook_dir="./outputs/refusal"
+            name="hidden-preference-notebook",
+            notebook_dir="./outputs/hidden-preference"
         )
 
         print(f"  ✓ Notebook session ready")
@@ -99,14 +105,14 @@ async def main():
             session_id=session.session_id,
             model_info=session.model_info_text
         )
-        
+
         # Research methodology as prompt (not skill)
         research_methodology = (
             example_dir.parent.parent.parent / "experiments" / "skills" /
             "research-methodology" / "SKILL.md"
         ).read_text()
 
-        
+
         prompts = [
             base_instructions,
             research_methodology,
