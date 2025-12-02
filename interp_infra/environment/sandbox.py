@@ -7,12 +7,20 @@ from enum import Enum
 from typing import Optional
 
 import modal
-import requests
 
-from .image import ModalImageBuilder
-from .volumes import get_or_create_volume, check_model_in_volume, download_model_to_volume, commit_volumes
-from .handles import ModelHandle, RepoHandle
-from ._scripts import DOCKERD_SCRIPT, jupyter_startup_script, code_server_install_script
+from .utils import (
+    ModalImageBuilder,
+    ModelHandle,
+    RepoHandle,
+    get_or_create_volume,
+    check_model_in_volume,
+    download_model_to_volume,
+    commit_volumes,
+    start_jupyter,
+    start_docker_daemon,
+    start_code_server,
+    wait_for_service,
+)
 
 
 class ExecutionMode(Enum):
@@ -55,8 +63,6 @@ class SandboxConfig:
     debug_port: int = 8080
     rpc_timeout: int = 600
     wait_timeout: int = 300
-    api_key_names: list[str] = field(default_factory=lambda: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"])
-    hf_secret_name: str = "huggingface-secret"
     notebook_packages: list[str] = field(default_factory=lambda: [
         "jupyter_server", "ipykernel", "jupyter", "jupyter_client", "nbformat", "tornado",
         "fastmcp", "Pillow", "requests", "torch", "transformers", "accelerate",
@@ -94,7 +100,7 @@ class Sandbox:
         self._create_sandbox(image)
 
         if self.config.docker_in_docker:
-            self._start_docker_daemon()
+            start_docker_daemon(self)
 
         self._download_models()
         self._clone_repos()
@@ -249,30 +255,24 @@ class Sandbox:
             ))
 
     def _collect_secrets(self) -> list[modal.Secret]:
-        """Collect all Modal secrets."""
+        """Load or create secrets from names or environment variables."""
         secrets = []
 
-        for secret_name in self.config.secrets:
+        for name in self.config.secrets:
             try:
-                secrets.append(modal.Secret.from_name(secret_name))
+                # Try to load from Modal first
+                secrets.append(modal.Secret.from_name(name))
             except modal.exception.NotFoundError:
-                pass
-
-        if self.config.hf_secret_name:
-            try:
-                secrets.append(modal.Secret.from_name(self.config.hf_secret_name))
-            except modal.exception.NotFoundError:
-                pass
-
-        if os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"):
-            secrets.append(modal.Secret.from_dict({
-                "MODAL_TOKEN_ID": os.environ["MODAL_TOKEN_ID"],
-                "MODAL_TOKEN_SECRET": os.environ["MODAL_TOKEN_SECRET"],
-            }))
-
-        api_keys = {k: os.environ[k] for k in self.config.api_key_names if k in os.environ}
-        if api_keys:
-            secrets.append(modal.Secret.from_dict(api_keys))
+                # If not in Modal, try to create from environment variable
+                if name in os.environ:
+                    secrets.append(modal.Secret.from_dict({name: os.environ[name]}))
+                else:
+                    raise ValueError(
+                        f"Secret '{name}' not found in Modal and no matching environment variable.\n"
+                        f"Either:\n"
+                        f"  1. Create in Modal: modal secret create {name} {name}=<value>\n"
+                        f"  2. Set environment variable: export {name}=<value>"
+                    )
 
         return secrets
 
@@ -311,47 +311,13 @@ if not repo_path.exists():
     def _start_services(self):
         """Start execution mode services."""
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
-            self._start_jupyter()
+            start_jupyter(self, self.config.jupyter_port)
             self._jupyter_url = self._sandbox.tunnels()[self.config.jupyter_port].url
-            self._wait_for_service(f"{self._jupyter_url}/api/scribe/health")
+            wait_for_service(f"{self._jupyter_url}/api/scribe/health")
             print(f"Jupyter: {self._jupyter_url}")
 
         if self.config.debug:
-            self._start_code_server()
+            start_code_server(self, self.config.debug_port)
             self._code_server_url = self._sandbox.tunnels()[self.config.debug_port].url
-            self._wait_for_service(f"{self._code_server_url}/healthz")
+            wait_for_service(f"{self._code_server_url}/healthz")
             print(f"Code-server: {self._code_server_url}")
-
-    def _start_docker_daemon(self):
-        """Start docker daemon."""
-        self._sandbox.open("/start-dockerd.sh", "w").write(DOCKERD_SCRIPT)
-        self.exec("chmod +x /start-dockerd.sh && nohup /start-dockerd.sh > /var/log/dockerd.log 2>&1 &")
-
-        for _ in range(30):
-            try:
-                self.exec("docker info > /dev/null 2>&1")
-                return
-            except RuntimeError:
-                time.sleep(1)
-
-        raise RuntimeError("Docker daemon failed to start")
-
-    def _start_jupyter(self):
-        """Start Jupyter server."""
-        script = jupyter_startup_script(self.config.jupyter_port).replace('"', '\\"')
-        self.exec(f'nohup python -c "{script}" > /var/log/jupyter.log 2>&1 &')
-
-    def _start_code_server(self):
-        """Start code-server."""
-        self.exec(f"{code_server_install_script()} > /var/log/code-server-install.log 2>&1")
-        self.exec(f'nohup code-server --bind-addr 0.0.0.0:{self.config.debug_port} --auth none /workspace > /var/log/code-server.log 2>&1 &')
-
-    def _wait_for_service(self, url: str, max_retries: int = 100):
-        """Wait for HTTP service to be ready."""
-        for _ in range(max_retries):
-            try:
-                if requests.get(url, timeout=5).status_code == 200:
-                    return
-            except (requests.RequestException, ConnectionError):
-                pass
-            time.sleep(2)

@@ -1,8 +1,11 @@
 """Simple agent runner using MCP and system prompts."""
 
-from typing import Optional, Literal, AsyncIterator
+from typing import Optional, Literal, AsyncIterator, TYPE_CHECKING
 
 from .providers import run_claude, run_openai, run_gemini
+
+if TYPE_CHECKING:
+    from ..execution.session_base import SessionBase
 
 
 Provider = Literal["claude", "gemini", "openai"]
@@ -16,22 +19,26 @@ DEFAULT_MODELS = {
 
 
 async def run_agent(
-    mcp_config: dict,
-    system_prompt: str,
+    session: "SessionBase",
     task: str,
+    mcp_servers: Optional[list[dict]] = None,
+    prompts: Optional[list[str]] = None,
     provider: Provider = "claude",
     model: Optional[str] = None,
 ) -> AsyncIterator[dict]:
     """
-    Run an agent with MCP tools and system prompt.
+    Run an agent with session, MCP servers, and prompts.
 
-    This is a simple harness. For full control, use the provider
-    functions directly or write your own harness with Claude SDK.
+    Three separate inputs:
+    1. session - execution context (workspace)
+    2. mcp_servers - list of MCP server configs
+    3. prompts - list of system prompt strings
 
     Args:
-        mcp_config: MCP server configuration (from session.mcp_config)
-        system_prompt: System prompt (from session.system_prompt or custom)
+        session: Session with workspace
         task: What the agent should do
+        mcp_servers: List of MCP server configs (optional)
+        prompts: List of system prompt strings (optional)
         provider: "claude", "gemini", or "openai"
         model: Override default model for provider
 
@@ -39,19 +46,49 @@ async def run_agent(
         Agent messages (dict format)
 
     Example:
-        # Using session primitives
-        session = create_notebook_session(sandbox)
-        session.add(steering_extension)
-        session.add(target_proxy, as_="mcp")
+        # Setup
+        workspace = Workspace(libraries=[...])
+        session = create_notebook_session(sandbox, workspace)
 
+        # MCP servers from various sources
+        mcp_servers = [
+            {"web": {"command": "..."}},
+            scoped_sandbox.serve("tools.py", expose_as="mcp"),
+        ]
+
+        # Prompts from various sources
+        prompts = [
+            "# Base instructions...",
+            "# Model info...",
+        ]
+
+        # Run agent
         async for msg in run_agent(
-            mcp_config=session.mcp_config,
-            system_prompt=session.system_prompt,
+            session=session,
             task="Find steering vectors",
-            provider="claude"
+            mcp_servers=mcp_servers,
+            prompts=prompts,
+            provider="claude",
         ):
             print(msg)
     """
+    # Build MCP config
+    mcp_config = {}
+    if mcp_servers:
+        for server in mcp_servers:
+            mcp_config.update(server)
+
+    # Build system prompt
+    system_prompt_parts = [
+        f"Workspace: {session.workspace_path}",
+        "You can write code in your execution context and use MCP tools.",
+    ]
+
+    if prompts:
+        system_prompt_parts.extend(prompts)
+
+    system_prompt = "\n\n".join(system_prompt_parts)
+
     # Use model parameter or default for provider
     model = model or DEFAULT_MODELS[provider]
 

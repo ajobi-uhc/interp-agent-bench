@@ -1,120 +1,96 @@
-"""Local session management for lightweight agent work."""
+"""Local session management."""
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Optional
+import shutil
 
+from ..workspace import Workspace
 from .session_base import SessionBase
-
-if TYPE_CHECKING:
-    from ..extension import Extension
 
 
 @dataclass
 class LocalSession(SessionBase):
-    """
-    A local session for running agents with MCP tools.
+    """A local session for running agents with MCP tools only."""
 
-    Unlike NotebookSession/CLISession, this runs entirely on the local machine.
-    Use this when you want to use MCP tools (like from ScopedSandbox) with an agent
-    but don't need a full notebook/CLI environment.
-
-    Manages:
-    1. Local workspace directory
-    2. Configuration accumulation (MCP endpoints, prompts, extensions)
-    3. Local Python namespace for extension code
-    """
     session_id: str
-    workspace: Path
     _namespace: dict = field(default_factory=dict, init=False, repr=False)
 
-    def _execute_extension(self, extension: "Extension"):
-        """Execute extension code in local namespace."""
-        if extension.code:
-            exec(extension.code, self._namespace)
+    def _mount_dir(self, src: str, dest: str):
+        """Copy local directory to workspace."""
+        src_path = Path(src)
+        dest_path = self.workspace_path / dest.lstrip("/")
+
+        if not src_path.exists():
+            raise FileNotFoundError(f"Directory not found: {src}")
+
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(src_path, dest_path, dirs_exist_ok=True)
+
+    def _mount_file(self, src: str, dest: str):
+        """Copy local file to workspace."""
+        src_path = Path(src)
+        dest_path = self.workspace_path / dest.lstrip("/")
+
+        if not src_path.exists():
+            raise FileNotFoundError(f"File not found: {src}")
+
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_path, dest_path)
+
+    def _copy_skill_dir(self, skill_dir: str):
+        """Copy skill directory to workspace/.claude/skills/."""
+        src_path = Path(skill_dir)
+        if not src_path.exists():
+            raise FileNotFoundError(f"Skill directory not found: {skill_dir}")
+
+        skills_base = self.workspace_path / ".claude" / "skills"
+        dest_path = skills_base / src_path.name
+
+        skills_base.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(src_path, dest_path, dirs_exist_ok=True)
+
+    def _execute_code(self, code: str):
+        """Execute code in local namespace."""
+        exec(code, self._namespace)
 
     def exec_file(self, file_path: str, **kwargs):
-        """
-        Not supported for LocalSession.
-
-        LocalSession runs entirely on the local machine - use regular Python imports instead.
-        """
+        """Not supported - use regular Python imports."""
         raise NotImplementedError(
-            "exec_file() is not supported for LocalSession. "
-            "LocalSession runs locally - use regular Python imports instead."
+            "exec_file() not supported for LocalSession. Use regular Python imports."
         )
-
-    @property
-    def mcp_config(self) -> dict:
-        """
-        MCP configuration for connecting agents.
-
-        Includes all added proxies/extensions exposed as MCP.
-        """
-        config = {}
-
-        # Add all MCP endpoints
-        for endpoint in self._mcp_endpoints:
-            config.update(endpoint)
-
-        return config
-
-    @property
-    def system_prompt(self) -> str:
-        """Accumulated system prompt from extensions with workspace info."""
-        prompts = [
-            f"You have a local workspace directory at: {self.workspace.absolute()}\n"
-            "You can read/write files in this directory using your built-in file tools."
-        ]
-        prompts.extend(self._prompts)
-        return "\n\n".join(prompts)
 
 
 def create_local_session(
+    workspace: Optional[Workspace] = None,
     name: str = "local-session",
-    workspace: str = "./workspace",
+    workspace_dir: str = "./workspace",
 ) -> LocalSession:
     """
     Create a local session for agent work.
 
     Args:
-        name: Session name/identifier
-        workspace: Local workspace directory path
+        workspace: Workspace configuration
+        name: Session name
+        workspace_dir: Local workspace directory path
 
     Returns:
-        LocalSession ready for agent
-
-    Example:
-        # Create local session
-        session = create_local_session(name="redteam", workspace="./outputs")
-
-        # Add ScopedSandbox proxy as MCP tool
-        session.add(autorater_proxy)
-
-        # Add extensions
-        session.add(Extension.from_file("skills/redteam.md"))
-
-        # Run agent
-        async for msg in run_agent(
-            mcp_config=session.mcp_config,
-            system_prompt=session.system_prompt,
-            task="Red team the autorater",
-            provider="claude"
-        ):
-            print(msg)
+        LocalSession with workspace setup
     """
     print(f"Creating local session: {name}")
 
-    # Create workspace directory
-    workspace_path = Path(workspace)
+    workspace_path = Path(workspace_dir)
     workspace_path.mkdir(parents=True, exist_ok=True)
 
     session = LocalSession(
         session_id=name,
-        workspace=workspace_path,
+        workspace_path=workspace_path,
     )
+
+    # Setup workspace if provided
+    if workspace:
+        workspace.setup_in(session)
 
     print(f"  Local session ready: {name}")
     print(f"  Workspace: {workspace_path.absolute()}")
-
     return session
