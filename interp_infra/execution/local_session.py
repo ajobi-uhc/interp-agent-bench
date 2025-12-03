@@ -16,49 +16,50 @@ class LocalSession(SessionBase):
     session_id: str
     _namespace: dict = field(default_factory=dict, init=False, repr=False)
 
-    def _mount_dir(self, src: str, dest: str):
-        """Copy local directory to workspace."""
-        src_path = Path(src)
-        dest_path = self.workspace_path / dest.lstrip("/")
-
-        if not src_path.exists():
-            raise FileNotFoundError(f"Directory not found: {src}")
-
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(src_path, dest_path, dirs_exist_ok=True)
-
-    def _mount_file(self, src: str, dest: str):
-        """Copy local file to workspace."""
-        src_path = Path(src)
-        dest_path = self.workspace_path / dest.lstrip("/")
-
-        if not src_path.exists():
-            raise FileNotFoundError(f"File not found: {src}")
-
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src_path, dest_path)
-
-    def _copy_skill_dir(self, skill_dir: str):
-        """Copy skill directory to workspace/.claude/skills/."""
-        src_path = Path(skill_dir)
-        if not src_path.exists():
-            raise FileNotFoundError(f"Skill directory not found: {skill_dir}")
-
-        skills_base = self.workspace_path / ".claude" / "skills"
-        dest_path = skills_base / src_path.name
-
-        skills_base.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(src_path, dest_path, dirs_exist_ok=True)
-
-    def _execute_code(self, code: str):
+    def exec(self, code: str, **kwargs):
         """Execute code in local namespace."""
         exec(code, self._namespace)
 
-    def exec_file(self, file_path: str, **kwargs):
-        """Not supported - use regular Python imports."""
-        raise NotImplementedError(
-            "exec_file() not supported for LocalSession. Use regular Python imports."
-        )
+    def setup(self, workspace: "Workspace"):
+        """Apply workspace configuration to local session."""
+        # Copy local files/dirs
+        for src, dest in workspace.local_dirs:
+            src_path = Path(src)
+            dest_path = self.workspace_path / dest.lstrip("/")
+            if not src_path.exists():
+                raise FileNotFoundError(f"Directory not found: {src}")
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src_path, dest_path, dirs_exist_ok=True)
+
+        for src, dest in workspace.local_files:
+            src_path = Path(src)
+            dest_path = self.workspace_path / dest.lstrip("/")
+            if not src_path.exists():
+                raise FileNotFoundError(f"File not found: {src}")
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_path, dest_path)
+
+        # Install libraries
+        for library in workspace.libraries:
+            library.install_in(self)
+
+        # Install skills
+        for skill in workspace.skills:
+            skill.install_in(self)
+
+        # Copy skill directories
+        for skill_dir in workspace.skill_dirs:
+            src_path = Path(skill_dir)
+            if not src_path.exists():
+                raise FileNotFoundError(f"Skill directory not found: {skill_dir}")
+            skills_base = self.workspace_path / ".claude" / "skills"
+            dest_path = skills_base / src_path.name
+            skills_base.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src_path, dest_path, dirs_exist_ok=True)
+
+        # Run custom init code
+        if workspace.custom_init_code:
+            self.exec(workspace.custom_init_code)
 
 
 def create_local_session(
@@ -87,9 +88,9 @@ def create_local_session(
         workspace_path=workspace_path,
     )
 
-    # Setup workspace if provided
+    # Apply workspace configuration
     if workspace:
-        workspace.setup_in(session)
+        session.setup(workspace)
 
     print(f"  Local session ready: {name}")
     print(f"  Workspace: {workspace_path.absolute()}")

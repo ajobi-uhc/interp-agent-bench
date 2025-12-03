@@ -19,6 +19,9 @@ def log_tool_call(name: str, tool_input: dict = None):
                 val_str = val_str[:200] + f"... ({len(val_str)} chars)"
             print(f"  {key}: {val_str}", file=sys.stderr, flush=True)
 
+    # Show waiting indicator
+    print("⏳ Running...", file=sys.stderr, flush=True)
+
 
 def log_tool_result(result: str, is_error: bool = False):
     """Print tool result."""

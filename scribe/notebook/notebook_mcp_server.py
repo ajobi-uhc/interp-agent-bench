@@ -385,6 +385,22 @@ async def start_new_session(experiment_name: Optional[str] = None) -> Dict[str, 
         - vscode_url: URL to connect with VSCode
         - kernel_name: Display name of the kernel
     """
+    # If there's already an auto-attached session, return it instead of creating a new one
+    global _sessions, _active_sessions
+    if len(_active_sessions) == 1:
+        session_id = list(_active_sessions)[0]
+        session_info = _sessions[session_id]
+        print(f"[INFO] Returning existing auto-attached session {session_id}", file=sys.stderr)
+        return {
+            "session_id": session_id,
+            "kernel_id": session_info.get("kernel_id", "unknown"),
+            "status": "started",
+            "notebook_path": session_info.get("notebook_dir", "./outputs"),
+            "vscode_url": session_info.get("jupyter_url", ""),
+            "kernel_name": "Pre-warmed Session",
+            "note": "Using pre-existing session from infrastructure"
+        }
+
     return await _start_session_internal(
         experiment_name=experiment_name,
         notebook_path=None,

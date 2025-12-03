@@ -7,7 +7,15 @@ Structure:
 - clients/: Infrastructure provider clients (Modal, etc.)
 """
 
-from .sandbox import Sandbox, SandboxConfig, ExecutionMode, ModelConfig, RepoConfig
+from .sandbox import (
+    Sandbox,
+    SandboxConfig,
+    ExecutionMode,
+    ModelConfig,
+    RepoConfig,
+    ModelHandle,
+    RepoHandle,
+)
 from .scoped_sandbox import ScopedSandbox
 
 __all__ = [
@@ -16,5 +24,7 @@ __all__ = [
     "ExecutionMode",
     "ModelConfig",
     "RepoConfig",
+    "ModelHandle",
+    "RepoHandle",
     "ScopedSandbox",
 ]

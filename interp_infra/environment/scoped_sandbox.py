@@ -40,23 +40,39 @@ class ScopedSandbox(Sandbox):
     """
 
     def __init__(self, config: SandboxConfig):
-        config.execution_mode = None
+        # ScopedSandbox doesn't use execution modes (no jupyter/cli)
+        # RPC server is started separately
+        if config.execution_mode is not None:
+            config.execution_mode = None
+
         super().__init__(config)
         self._rpc_port: int = config.rpc_port
         self._rpc_url: Optional[str] = None
         self._rpc_process = None
-        self._started = False
 
     def _sanitize_name(self, name: str) -> str:
         """Convert model name to valid env var name."""
         # google/gemma-2-9b → GOOGLE_GEMMA_2_9B
         return name.replace("/", "_").replace("-", "_").upper()
 
-    def _prepare_models(self):
-        """Prepare models - idempotent."""
-        if self._model_handles:
+    def _setup_models(self):
+        """Setup models and set env vars for RPC code access."""
+        # Only setup once
+        if self.model_handles:
             return
-        super()._prepare_models()
+
+        super()._setup_models()
+
+        # Set environment variables for model paths
+        # RPC code can access these via os.environ
+        for handle in self.model_handles:
+            env_key = f"MODEL_{self._sanitize_name(handle.name)}_PATH"
+            self.config.env[env_key] = handle.volume_path
+
+            # If PEFT, also set base model path
+            if handle.is_peft and handle.base_model_path:
+                base_env_key = f"MODEL_{self._sanitize_name(handle.base_model)}_PATH"
+                self.config.env[base_env_key] = handle.base_model_path
 
     def start(
         self,
@@ -81,32 +97,15 @@ class ScopedSandbox(Sandbox):
             self.config.encrypted_ports = []
         self.config.encrypted_ports = [self._rpc_port]
 
-        # Prepare models early to set env vars
-        self._prepare_models()
-
-        # Set environment variables for model paths
-        # User can access via os.environ in their interface code
-        if self.config.models:
-            for handle in self._model_handles:
-                # Set env var: MODEL_<NAME>_PATH = volume_path
-                env_key = f"MODEL_{self._sanitize_name(handle.name)}_PATH"
-                self.config.env[env_key] = handle.volume_path
-
-                # If PEFT, also set base model path
-                if handle.is_peft and handle.base_model_path:
-                    base_env_key = f"MODEL_{self._sanitize_name(handle.base_model)}_PATH"
-                    self.config.env[base_env_key] = handle.base_model_path
-
-        # Start sandbox
+        # Start sandbox (will call _setup_models which sets env vars)
         super().start(name=name)
 
-        # Setup workspace if provided
+        # Apply workspace configuration
         if workspace:
             from ..execution import CLISession
-            temp_session = CLISession(sandbox=self, session_id="setup")
-            workspace.setup_in(temp_session)
+            temp_session = CLISession(sandbox=self, session_id="setup", workspace_path=Path("/workspace"))
+            temp_session.setup(workspace)
 
-        self._started = True
         return self
 
     def serve(
@@ -141,7 +140,7 @@ class ScopedSandbox(Sandbox):
             library = sandbox.serve("tools.py", expose_as="library")
             agent_workspace = Workspace(libraries=[library])
         """
-        if not self._started:
+        if not self._sandbox:
             raise RuntimeError("Sandbox not started. Call start() first.")
 
         # Read code

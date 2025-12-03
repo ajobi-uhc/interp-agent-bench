@@ -5,7 +5,7 @@ def extract_activation(model, tokenizer, text, layer_idx, position=-1):
     Args:
         model: Language model
         tokenizer: Tokenizer
-        text: Input text
+        text: Input text (can be a string or list of messages for chat template)
         layer_idx: Layer to extract from (0-indexed)
         position: Token position (-1 for last token)
 
@@ -14,8 +14,13 @@ def extract_activation(model, tokenizer, text, layer_idx, position=-1):
     """
     import torch
 
-    # Tokenize
-    inputs = tokenizer(text, return_tensors="pt").to(model.device)
+    # Handle both string and chat format
+    if isinstance(text, str):
+        inputs = tokenizer(text, return_tensors="pt").to(model.device)
+    else:
+        # Assume it's a list of messages for chat template
+        formatted = tokenizer.apply_chat_template(text, tokenize=False, add_generation_prompt=True)
+        inputs = tokenizer(formatted, return_tensors="pt").to(model.device)
 
     # Forward pass
     with torch.no_grad():

@@ -208,45 +208,39 @@ class Library:
         else:
             raise TypeError(f"Unsupported session type: {type(session)}")
 
+    def _write_to_sandbox(self, sandbox, base_path: str):
+        """Write library files to sandbox workspace."""
+        if self.is_single_file:
+            file_path = f"{base_path}/{self.name}.py"
+            code = list(self.files.values())[0]
+            sandbox.write_file(file_path, code)
+        else:
+            for rel_path, code in self.files.items():
+                file_path = f"{base_path}/{self.name}/{rel_path}"
+                sandbox.write_file(file_path, code)
+
+    def _write_to_local(self, workspace_path: Path):
+        """Write library files to local workspace."""
+        if self.is_single_file:
+            lib_file = workspace_path / f"{self.name}.py"
+            code = list(self.files.values())[0]
+            lib_file.write_text(code)
+        else:
+            for rel_path, code in self.files.items():
+                file_path = workspace_path / self.name / rel_path
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text(code)
+
     def _install_notebook(self, session):
         """Install in notebook session by writing to sandbox workspace."""
-        if self.is_single_file:
-            # Write single file to /workspace/{name}.py
-            file_path = f"/workspace/{self.name}.py"
-            code = list(self.files.values())[0]
-            session.sandbox.write_file(file_path, code)
-        else:
-            # Write package directory to /workspace/{name}/
-            for rel_path, code in self.files.items():
-                file_path = f"/workspace/{self.name}/{rel_path}"
-                session.sandbox.write_file(file_path, code)
-
+        self._write_to_sandbox(session.sandbox, "/workspace")
         # Ensure /workspace is in Python path (usually is by default)
         session.exec("import sys; sys.path.insert(0, '/workspace') if '/workspace' not in sys.path else None", hidden=True)
 
     def _install_cli(self, session):
         """Install in CLI session by writing to sandbox workspace."""
-        if self.is_single_file:
-            # Write single file
-            file_path = f"/workspace/{self.name}.py"
-            code = list(self.files.values())[0]
-            session.sandbox.write_file(file_path, code)
-        else:
-            # Write package directory
-            for rel_path, code in self.files.items():
-                file_path = f"/workspace/{self.name}/{rel_path}"
-                session.sandbox.write_file(file_path, code)
+        self._write_to_sandbox(session.sandbox, "/workspace")
 
     def _install_local(self, session):
         """Install in local session by writing to local workspace."""
-        if self.is_single_file:
-            # Write single file
-            lib_file = session.workspace_path / f"{self.name}.py"
-            code = list(self.files.values())[0]
-            lib_file.write_text(code)
-        else:
-            # Write package directory
-            for rel_path, code in self.files.items():
-                file_path = session.workspace_path / self.name / rel_path
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                file_path.write_text(code)
+        self._write_to_local(session.workspace_path)

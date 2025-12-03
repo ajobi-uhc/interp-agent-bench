@@ -14,6 +14,7 @@ Explore the model using whitebox interpretability methods to:
 You have access to a fine-tuned model (details hidden). Use interpretability tools to analyze its behavior.
 
 ## Methodology
+FIRST check that u can import the provided libraries and they work
 You have access to libraries for:
 - **extract_activations**: Extract and analyze internal model activations
 - **steering_hook**: Implement activation steering to test behavioral modifications

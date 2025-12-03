@@ -14,12 +14,14 @@ if TYPE_CHECKING:
 @dataclass
 class Workspace:
     """
-    Configuration for agent's workspace filesystem.
+    Declarative configuration for agent's workspace.
+
+    Pure data class - no behavior. Sessions interpret this config.
 
     Specifies:
     - Local files/directories to mount
     - Code libraries to make importable
-    - Skill directories for discovery
+    - Skills for agent discovery
     - Custom initialization code
 
     Examples:
@@ -46,63 +48,23 @@ class Workspace:
         )
     """
 
-    # Files and directories to mount
+    # Files and directories to mount (runtime)
     local_dirs: list[tuple[str, str]] = field(default_factory=list)
     local_files: list[tuple[str, str]] = field(default_factory=list)
 
     # Code libraries for agent
     libraries: list[Library] = field(default_factory=list)
 
-    # Skills for Claude discovery (generates .claude/skills/)
+    # Skills for Claude discovery
     skills: list[Skill] = field(default_factory=list)
-
-    # Skill directories (copied to workspace/.claude/skills/)
     skill_dirs: list[str] = field(default_factory=list)
 
-    # Custom initialization code (overrides defaults)
+    # Custom initialization code
     custom_init_code: Optional[str] = None
 
     # Model loading configuration
     preload_models: bool = True
     hidden_model_loading: bool = True
-
-    def setup_in(self, session: "SessionBase"):
-        """
-        Setup this workspace in a session.
-
-        Installs:
-        1. Mounts local files/dirs
-        2. Installs libraries
-        3. Installs skills (generates SKILL.md)
-        4. Copies skill directories
-        5. Runs custom init code
-
-        Args:
-            session: Session to setup workspace in
-        """
-        # Mount local directories
-        for src, dest in self.local_dirs:
-            session._mount_dir(src, dest)
-
-        # Mount local files
-        for src, dest in self.local_files:
-            session._mount_file(src, dest)
-
-        # Install libraries (makes them importable)
-        for library in self.libraries:
-            library.install_in(session)
-
-        # Install skills (generates .claude/skills/{name}/SKILL.md)
-        for skill in self.skills:
-            skill.install_in(session)
-
-        # Copy skill directories to workspace/.claude/skills/
-        for skill_dir in self.skill_dirs:
-            session._copy_skill_dir(skill_dir)
-
-        # Run custom initialization code
-        if self.custom_init_code:
-            session._execute_code(self.custom_init_code)
 
 
 def default_workspace() -> Workspace:

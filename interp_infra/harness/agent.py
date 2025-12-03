@@ -1,11 +1,8 @@
-"""Simple agent runner using MCP and system prompts."""
+"""Thin wrapper over agent SDKs - just prompt + MCP."""
 
-from typing import Optional, Literal, AsyncIterator, TYPE_CHECKING
+from typing import Optional, Literal, AsyncIterator
 
 from .providers import run_claude, run_openai, run_gemini
-
-if TYPE_CHECKING:
-    from ..execution.session_base import SessionBase
 
 
 Provider = Literal["claude", "gemini", "openai"]
@@ -19,26 +16,22 @@ DEFAULT_MODELS = {
 
 
 async def run_agent(
-    session: "SessionBase",
-    task: str,
-    mcp_servers: Optional[list[dict]] = None,
-    prompts: Optional[list[str]] = None,
+    prompt: str,
+    mcp_config: dict,
+    user_message: str = "",
     provider: Provider = "claude",
     model: Optional[str] = None,
 ) -> AsyncIterator[dict]:
     """
-    Run an agent with session, MCP servers, and prompts.
+    Run an agent with explicit prompt and MCP config.
 
-    Three separate inputs:
-    1. session - execution context (workspace)
-    2. mcp_servers - list of MCP server configs
-    3. prompts - list of system prompt strings
+    Thin wrapper over agent SDKs - no magic, no hidden behavior.
+    You build the prompt, you provide the MCP config.
 
     Args:
-        session: Session with workspace
-        task: What the agent should do
-        mcp_servers: List of MCP server configs (optional)
-        prompts: List of system prompt strings (optional)
+        prompt: System prompt for the agent
+        mcp_config: MCP server configuration dict
+        user_message: Initial user message (optional, defaults to empty)
         provider: "claude", "gemini", or "openai"
         model: Override default model for provider
 
@@ -46,49 +39,24 @@ async def run_agent(
         Agent messages (dict format)
 
     Example:
-        # Setup
-        workspace = Workspace(libraries=[...])
+        # Setup environment
         session = create_notebook_session(sandbox, workspace)
 
-        # MCP servers from various sources
-        mcp_servers = [
-            {"web": {"command": "..."}},
-            scoped_sandbox.serve("tools.py", expose_as="mcp"),
-        ]
+        # Build prompt explicitly
+        prompt = f'''
+        {session.model_info_text}
 
-        # Prompts from various sources
-        prompts = [
-            "# Base instructions...",
-            "# Model info...",
-        ]
+        Find steering vectors for the loaded model.
+        '''
 
-        # Run agent
+        # Run agent (explicit prompt + mcp)
         async for msg in run_agent(
-            session=session,
-            task="Find steering vectors",
-            mcp_servers=mcp_servers,
-            prompts=prompts,
+            prompt=prompt,
+            mcp_config=session.mcp_config,
             provider="claude",
         ):
             print(msg)
     """
-    # Build MCP config
-    mcp_config = {}
-    if mcp_servers:
-        for server in mcp_servers:
-            mcp_config.update(server)
-
-    # Build system prompt
-    system_prompt_parts = [
-        f"Workspace: {session.workspace_path}",
-        "You can write code in your execution context and use MCP tools.",
-    ]
-
-    if prompts:
-        system_prompt_parts.extend(prompts)
-
-    system_prompt = "\n\n".join(system_prompt_parts)
-
     # Use model parameter or default for provider
     model = model or DEFAULT_MODELS[provider]
 
@@ -96,8 +64,8 @@ async def run_agent(
     if provider == "claude":
         async for message in run_claude(
             mcp_config=mcp_config,
-            system_prompt=system_prompt,
-            task=task,
+            system_prompt=prompt,
+            task=user_message,
             model=model,
         ):
             yield message
@@ -105,8 +73,8 @@ async def run_agent(
     elif provider == "gemini":
         async for message in run_gemini(
             mcp_config=mcp_config,
-            system_prompt=system_prompt,
-            task=task,
+            system_prompt=prompt,
+            task=user_message,
             model=model,
         ):
             yield message
@@ -114,8 +82,8 @@ async def run_agent(
     elif provider == "openai":
         async for message in run_openai(
             mcp_config=mcp_config,
-            system_prompt=system_prompt,
-            task=task,
+            system_prompt=prompt,
+            task=user_message,
             model=model,
         ):
             yield message

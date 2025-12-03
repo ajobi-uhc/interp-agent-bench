@@ -8,10 +8,14 @@ from typing import Optional
 
 import modal
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # Load .env file if it exists
+except ImportError:
+    pass  # dotenv not installed, skip
+
 from .utils import (
     ModalImageBuilder,
-    ModelHandle,
-    RepoHandle,
     get_or_create_volume,
     check_model_in_volume,
     download_model_to_volume,
@@ -21,6 +25,31 @@ from .utils import (
     start_code_server,
     wait_for_service,
 )
+
+
+# Resource handles
+
+@dataclass
+class ModelHandle:
+    """Handle to a prepared model."""
+    name: str
+    volume_path: str
+    var_name: str = "model"
+    hidden: bool = False
+    is_peft: bool = False
+    base_model: Optional[str] = None
+    base_model_path: Optional[str] = None
+
+
+@dataclass
+class RepoHandle:
+    """Handle to a prepared repo."""
+    url: str
+    local_path: str
+    dockerfile: Optional[str] = None
+    container_name: Optional[str] = None
+    container_running: bool = False
+    install: str = False
 
 
 class ExecutionMode(Enum):
@@ -88,23 +117,59 @@ class Sandbox:
         self._code_server_url: Optional[str] = None
         self._image_builder: Optional[ModalImageBuilder] = None
 
+    def _check_modal_auth(self):
+        """Check if Modal is properly authenticated."""
+        try:
+            user_config = modal.config._user_config
+            if not user_config or not isinstance(user_config, dict):
+                raise ValueError("No Modal configuration found")
+
+            # Check if any profile has a valid token
+            has_valid_token = any(
+                profile.get('token_id') and profile.get('token_secret')
+                for profile in user_config.values()
+                if isinstance(profile, dict)
+            )
+
+            if not has_valid_token:
+                raise ValueError("No valid Modal token found")
+
+        except Exception as e:
+            raise RuntimeError(
+                f"Modal is not configured properly: {e}\n\n"
+                "Please authenticate with Modal:\n"
+                "  1. Run: modal token new\n"
+                "  2. Follow the prompts to log in\n"
+                "  3. Try running your script again\n\n"
+                "For more info: https://modal.com/docs/guide/getting-started"
+            )
+
     def start(self, name: str = "sandbox") -> "Sandbox":
         """Build image and start the sandbox."""
         print(f"Starting sandbox: {name}")
 
-        self._prepare_models()
-        self._prepare_repos()
-        image = self._build_image()
+        # Check Modal authentication early
+        self._check_modal_auth()
 
+        # Setup models and repos (creates handles + volumes)
+        self._setup_models()
+        self._setup_repos()
+
+        # Build image and create sandbox
+        image = self._build_image()
         self._app = modal.App.lookup(name, create_if_missing=True)
         self._create_sandbox(image)
 
+        # Start docker if needed
         if self.config.docker_in_docker:
             start_docker_daemon(self)
 
+        # Download models and clone repos
         self._download_models()
         self._clone_repos()
         commit_volumes(self._volumes)
+
+        # Start services (jupyter, code-server)
         self._start_services()
 
         print("Sandbox ready")
@@ -185,6 +250,16 @@ class Sandbox:
     def modal_sandbox(self) -> Optional[modal.Sandbox]:
         return self._sandbox
 
+    @property
+    def model_handles(self) -> list[ModelHandle]:
+        """List of prepared model handles."""
+        return list(self._model_handles)
+
+    @property
+    def repo_handles(self) -> list[RepoHandle]:
+        """List of prepared repo handles."""
+        return list(self._repo_handles)
+
     # Internal methods
 
     def _build_image(self) -> modal.Image:
@@ -210,7 +285,10 @@ class Sandbox:
     def _create_sandbox(self, image: modal.Image):
         """Create Modal sandbox with configuration."""
         gpu = f"{self.config.gpu}:{self.config.gpu_count}" if self.config.gpu else None
-        secrets = self._collect_secrets()
+
+        # Collect environment variables from .env file and config
+        secret_env_vars = self._collect_env_vars()
+        env_vars = {**self.config.env, **secret_env_vars}
 
         ports = list(self.config.encrypted_ports)
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
@@ -223,8 +301,7 @@ class Sandbox:
             "timeout": self.config.timeout,
             "app": self._app,
             **({"gpu": gpu} if gpu else {}),
-            **({"secrets": secrets} if secrets else {}),
-            **({"env": self.config.env} if self.config.env else {}),
+            **({"env": env_vars} if env_vars else {}),
             **({"volumes": self._volumes} if self._volumes else {}),
             **({"encrypted_ports": ports} if ports else {}),
             **({"experimental_options": {"enable_docker": True}} if self.config.docker_in_docker else {}),
@@ -247,7 +324,7 @@ class Sandbox:
 
         return stdout
 
-    def _prepare_models(self):
+    def _setup_models(self):
         """Setup model volumes and handles."""
         for model_cfg in self.config.models:
             base_model_path = None
@@ -273,7 +350,7 @@ class Sandbox:
                 base_model_path=base_model_path,
             ))
 
-    def _prepare_repos(self):
+    def _setup_repos(self):
         """Setup repo handles."""
         for repo_cfg in self.config.repos:
             url = repo_cfg.url if repo_cfg.url.startswith("http") else f"https://github.com/{repo_cfg.url}"
@@ -287,27 +364,25 @@ class Sandbox:
                 install=repo_cfg.install,
             ))
 
-    def _collect_secrets(self) -> list[modal.Secret]:
-        """Load or create secrets from names or environment variables."""
-        secrets = []
+    def _collect_env_vars(self) -> dict[str, str]:
+        """Collect environment variables from config.secrets names.
+
+        This loads values from os.environ (including .env file) and passes
+        them as plain environment variables to the sandbox.
+        Modal secrets are NOT used - everything comes from local environment.
+
+        Returns:
+            dict: Environment variables to pass to sandbox
+        """
+        env_vars = {}
 
         for name in self.config.secrets:
-            try:
-                # Try to load from Modal first
-                secrets.append(modal.Secret.from_name(name))
-            except modal.exception.NotFoundError:
-                # If not in Modal, try to create from environment variable
-                if name in os.environ:
-                    secrets.append(modal.Secret.from_dict({name: os.environ[name]}))
-                else:
-                    raise ValueError(
-                        f"Secret '{name}' not found in Modal and no matching environment variable.\n"
-                        f"Either:\n"
-                        f"  1. Create in Modal: modal secret create {name} {name}=<value>\n"
-                        f"  2. Set environment variable: export {name}=<value>"
-                    )
+            if name in os.environ:
+                env_vars[name] = os.environ[name]
+            else:
+                print(f"  ⚠ Warning: '{name}' not found in environment, skipping")
 
-        return secrets
+        return env_vars
 
     def _download_models(self):
         """Download all models to volumes."""

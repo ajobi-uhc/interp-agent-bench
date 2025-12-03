@@ -13,7 +13,11 @@ class SessionBase:
     """
     Base class for all session types.
 
-    Session = execution context (sandbox + workspace).
+    Session = execution context that interprets workspace config.
+
+    All sessions provide:
+    - exec(code): Execute Python code
+    - setup(workspace): Apply workspace configuration
 
     Does NOT manage:
     - MCP servers (passed to harness)
@@ -22,22 +26,30 @@ class SessionBase:
 
     workspace_path: Path
 
-    def _mount_dir(self, src: str, dest: str):
-        """Mount local directory into workspace. Subclasses implement."""
-        raise NotImplementedError(f"{self.__class__.__name__} must implement _mount_dir()")
+    def exec(self, code: str, **kwargs):
+        """
+        Execute Python code in this session's context.
 
-    def _mount_file(self, src: str, dest: str):
-        """Mount local file into workspace. Subclasses implement."""
-        raise NotImplementedError(f"{self.__class__.__name__} must implement _mount_file()")
+        Args:
+            code: Python code to execute
+            **kwargs: Session-specific options (e.g., hidden=True for notebooks)
 
-    def _copy_skill_dir(self, skill_dir: str):
-        """Copy skill directory to workspace/.claude/skills/. Subclasses implement."""
-        raise NotImplementedError(f"{self.__class__.__name__} must implement _copy_skill_dir()")
+        Returns:
+            Execution result (format varies by session type)
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} must implement exec()")
 
-    def _execute_code(self, code: str):
-        """Execute code in session context. Subclasses implement."""
-        raise NotImplementedError(f"{self.__class__.__name__} must implement _execute_code()")
+    def setup(self, workspace: "Workspace"):
+        """
+        Apply workspace configuration to this session.
 
-    def exec_file(self, file_path: str, **kwargs):
-        """Execute a Python file. Subclasses implement."""
-        raise NotImplementedError(f"{self.__class__.__name__} must implement exec_file()")
+        Each session type implements this to handle:
+        - Mounting local files/dirs (if applicable)
+        - Installing libraries
+        - Installing skills
+        - Running custom init code
+
+        Args:
+            workspace: Workspace configuration to apply
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} must implement setup()")

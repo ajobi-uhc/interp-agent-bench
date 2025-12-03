@@ -6,10 +6,10 @@ from typing import Optional
 import requests
 import shutil
 
-from ..environment.sandbox import Sandbox
-from ..environment.utils import ModelHandle, RepoHandle
+from ..environment.sandbox import Sandbox, ModelHandle, RepoHandle
 from ..workspace import Workspace
 from .session_base import SessionBase
+from .model_loader import generate_model_loading_code, generate_model_verification_code
 
 
 @dataclass
@@ -42,13 +42,28 @@ class NotebookSession(SessionBase):
         code = Path(file_path).read_text()
         return self.exec(code, **kwargs)
 
-    def _mount_dir(self, src: str, dest: str):
-        """Mount not supported in notebook - files are in sandbox."""
-        print(f"Warning: Cannot mount {src} → {dest} in notebook session")
+    def setup(self, workspace: "Workspace"):
+        """Apply workspace configuration to notebook session."""
+        # Mount local files/dirs (not supported in notebook - files must be in sandbox)
+        if workspace.local_dirs or workspace.local_files:
+            print("Warning: local_dirs/local_files not supported in notebook sessions")
+            print("  Use SandboxConfig.local_dirs/local_files to include files at build time")
 
-    def _mount_file(self, src: str, dest: str):
-        """Mount not supported in notebook - files are in sandbox."""
-        print(f"Warning: Cannot mount {src} → {dest} in notebook session")
+        # Install libraries
+        for library in workspace.libraries:
+            library.install_in(self)
+
+        # Install skills
+        for skill in workspace.skills:
+            skill.install_in(self)
+
+        # Copy skill directories
+        for skill_dir in workspace.skill_dirs:
+            self._copy_skill_dir(skill_dir)
+
+        # Run custom init code
+        if workspace.custom_init_code:
+            self.exec(workspace.custom_init_code, hidden=True)
 
     def _copy_skill_dir(self, skill_dir: str):
         """Copy skill directory to notebook's workspace."""
@@ -56,11 +71,10 @@ class NotebookSession(SessionBase):
         if not src_path.exists():
             raise FileNotFoundError(f"Skill directory not found: {skill_dir}")
 
-        # Create skills directory in sandbox
         skills_base = self.workspace_path / ".claude" / "skills"
         dest_path = skills_base / src_path.name
 
-        # Copy via sandbox
+        # Create skills directory in sandbox
         self.exec(f"""
 import shutil
 from pathlib import Path
@@ -69,12 +83,7 @@ dest = Path("{dest_path}")
 dest.parent.mkdir(parents=True, exist_ok=True)
 """, hidden=True)
 
-        # Would need to upload files to sandbox - simplified for now
         print(f"Skills copied to {dest_path}")
-
-    def _execute_code(self, code: str):
-        """Execute code in notebook kernel."""
-        self.exec(code, hidden=True)
 
     @property
     def mcp_config(self) -> dict:
@@ -95,11 +104,11 @@ dest.parent.mkdir(parents=True, exist_ok=True)
     @property
     def model_info_text(self) -> str:
         """Generate formatted text describing pre-loaded models."""
-        if not self.sandbox._model_handles:
+        if not self.sandbox.model_handles:
             return ""
 
         lines = ["### Pre-loaded Models", "The following models are already loaded in the kernel:"]
-        for handle in self.sandbox._model_handles:
+        for handle in self.sandbox.model_handles:
             model_name = handle.name if not handle.hidden else "<hidden>"
             lines.append(f"- `{handle.var_name}`: {model_name}")
             tokenizer_var = f"{handle.var_name}_tokenizer" if handle.var_name != "model" else "tokenizer"
@@ -115,16 +124,18 @@ def create_notebook_session(
     notebook_dir: str = "./outputs",
 ) -> NotebookSession:
     """
-    Create a notebook session and setup workspace.
+    Create a notebook session connected to a sandbox.
+
+    Loads sandbox models/repos into the notebook kernel, then applies workspace configuration.
 
     Args:
         sandbox: Sandbox with jupyter running
-        workspace: Workspace configuration
+        workspace: Workspace configuration (optional)
         name: Session name
         notebook_dir: Directory for notebook files
 
     Returns:
-        NotebookSession with workspace setup
+        NotebookSession ready for agent execution
     """
     if not sandbox.jupyter_url:
         raise RuntimeError("Sandbox needs jupyter. Use execution_mode=ExecutionMode.NOTEBOOK")
@@ -145,22 +156,28 @@ def create_notebook_session(
         notebook_dir=notebook_dir,
     )
 
-    # Load models into kernel (if workspace allows)
-    if workspace is None or workspace.preload_models:
-        hidden = workspace.hidden_model_loading if workspace else True
-        for handle in sandbox._model_handles:
-            _load_model(session, handle, hidden=hidden)
+    # Load sandbox resources into kernel
+    _load_sandbox_resources(session, sandbox, workspace)
 
-    # Setup repos
-    for handle in sandbox._repo_handles:
-        _setup_repo(session, handle)
-
-    # Setup workspace if provided
+    # Apply workspace configuration
     if workspace:
-        workspace.setup_in(session)
+        session.setup(workspace)
 
     print(f"Session ready: {session.session_id}")
     return session
+
+
+def _load_sandbox_resources(session: NotebookSession, sandbox: Sandbox, workspace: Optional[Workspace]):
+    """Load models and repos from sandbox into notebook kernel."""
+    # Load models (if workspace allows)
+    if workspace is None or workspace.preload_models:
+        hidden = workspace.hidden_model_loading if workspace else True
+        for handle in sandbox.model_handles:
+            _load_model(session, handle, hidden=hidden)
+
+    # Setup repos
+    for handle in sandbox.repo_handles:
+        _setup_repo(session, handle)
 
 
 def _load_model(session: NotebookSession, handle: ModelHandle, hidden: bool = True):
@@ -175,39 +192,7 @@ def _load_model(session: NotebookSession, handle: ModelHandle, hidden: bool = Tr
     model_name = "<hidden>" if handle.hidden else handle.name
     print(f"  Loading model{var_info}: {model_name}")
 
-    var = handle.var_name
-    tok_var = f"{var}_tokenizer" if var != "model" else "tokenizer"
-
-    if handle.is_peft:
-        code = f'''from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel
-
-_base = AutoModelForCausalLM.from_pretrained("{handle.base_model_path}", device_map="auto", torch_dtype="auto")
-{var} = PeftModel.from_pretrained(_base, "{handle.volume_path}")
-{tok_var} = AutoTokenizer.from_pretrained("{handle.base_model_path}")
-del _base
-
-# Verify model is loaded and ready
-_ = {var}.device
-print(f"✓ Model loaded: {{type({var}).__name__}} on {{{var}.device}}")
-'''
-    else:
-        code = f'''from transformers import AutoModelForCausalLM, AutoTokenizer
-
-{var} = AutoModelForCausalLM.from_pretrained("{handle.volume_path}", device_map="auto", torch_dtype="auto")
-{tok_var} = AutoTokenizer.from_pretrained("{handle.volume_path}")
-
-# Verify model is loaded and ready
-_ = {var}.device
-print(f"✓ Model loaded: {{type({var}).__name__}} on {{{var}.device}}")
-'''
-
-    if handle.hidden:
-        code += f'''
-if hasattr({var}, "config"):
-    {var}.config.name_or_path = "model"
-'''
-
+    code = generate_model_loading_code(handle) + generate_model_verification_code(handle)
     session.exec(code, hidden=hidden)
 
 

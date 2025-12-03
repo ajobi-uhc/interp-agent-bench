@@ -11,6 +11,10 @@ def create_steering_hook(model, layer_idx, vector, strength=1.0, start_pos=0):
 
     Returns:
         Context manager - use with 'with' statement
+
+    Example:
+        with create_steering_hook(model, layer_idx=20, vector=concept_vec, strength=2.0):
+            outputs = model.generate(...)
     """
     import torch
 
@@ -49,5 +53,6 @@ def create_steering_hook(model, layer_idx, vector, strength=1.0, start_pos=0):
         def __exit__(self, *args):
             if self.hook_handle:
                 self.hook_handle.remove()
+                self.hook_handle = None
 
     return SteeringHook()
