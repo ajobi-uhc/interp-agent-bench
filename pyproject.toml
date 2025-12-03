@@ -1,9 +1,9 @@
 [project]
-name = "scribe"
-version = "0.1.1"
-description = "Jupyter Server + Notebooks for CLI Agents"
+name = "interp-infra"
+version = "0.3.0"
+description = "Modular infrastructure for interpretability experiments with agents"
 readme = "README.md"
-requires-python = ">=3.10,<3.11"
+requires-python = ">=3.10"
 dependencies = [
     "torch",
     "anthropic>=0.40.0",
@@ -35,5 +35,9 @@ web = [
 [project.scripts]
 scribe = "scribe.cli.cli:main"
 
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [tool.setuptools]
-packages = ["scribe"]
+packages = ["scribe", "interp_infra"]

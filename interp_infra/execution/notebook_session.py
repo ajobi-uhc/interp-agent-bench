@@ -1,22 +1,21 @@
 """Notebook session management."""
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import Optional
 import requests
+import shutil
 
-from ..environment.sandbox import Sandbox
-from ..environment.handles import ModelHandle, RepoHandle
+from ..environment.sandbox import Sandbox, ModelHandle, RepoHandle
+from ..workspace import Workspace
 from .session_base import SessionBase
-from .model_loader import ModelLoader
-from ._session_utils import read_and_exec
-
-if TYPE_CHECKING:
-    from ..extension import Extension
+from .model_loader import generate_model_loading_code, generate_model_verification_code
 
 
 @dataclass
 class NotebookSession(SessionBase):
-    """A live notebook session."""
+    """A live Jupyter notebook session."""
+
     session_id: str
     jupyter_url: str
     sandbox: Sandbox
@@ -40,38 +39,106 @@ class NotebookSession(SessionBase):
 
     def exec_file(self, file_path: str, **kwargs) -> dict:
         """Execute a Python file in the notebook kernel."""
-        return read_and_exec(file_path, self.exec, **kwargs)
+        code = Path(file_path).read_text()
+        return self.exec(code, **kwargs)
 
-    def _execute_extension(self, extension: "Extension"):
-        """Execute extension code in notebook kernel."""
-        if extension.code:
-            self.exec(extension.code, hidden=True)
+    def setup(self, workspace: "Workspace"):
+        """Apply workspace configuration to notebook session."""
+        # Mount local files/dirs (not supported in notebook - files must be in sandbox)
+        if workspace.local_dirs or workspace.local_files:
+            print("Warning: local_dirs/local_files not supported in notebook sessions")
+            print("  Use SandboxConfig.local_dirs/local_files to include files at build time")
+
+        # Install libraries
+        for library in workspace.libraries:
+            library.install_in(self)
+
+        # Install skills
+        for skill in workspace.skills:
+            skill.install_in(self)
+
+        # Copy skill directories
+        for skill_dir in workspace.skill_dirs:
+            self._copy_skill_dir(skill_dir)
+
+        # Run custom init code
+        if workspace.custom_init_code:
+            self.exec(workspace.custom_init_code, hidden=True)
+
+    def _copy_skill_dir(self, skill_dir: str):
+        """Copy skill directory to notebook's workspace."""
+        src_path = Path(skill_dir)
+        if not src_path.exists():
+            raise FileNotFoundError(f"Skill directory not found: {skill_dir}")
+
+        skills_base = self.workspace_path / ".claude" / "skills"
+        dest_path = skills_base / src_path.name
+
+        # Create skills directory in sandbox
+        self.exec(f"""
+import shutil
+from pathlib import Path
+
+dest = Path("{dest_path}")
+dest.parent.mkdir(parents=True, exist_ok=True)
+""", hidden=True)
+
+        print(f"Skills copied to {dest_path}")
 
     @property
     def mcp_config(self) -> dict:
-        """MCP configuration for connecting agents."""
-        config = {
+        """MCP configuration for connecting agents to this notebook."""
+        return {
             "notebooks": {
                 "type": "stdio",
                 "command": "python",
                 "args": ["-m", "scribe.notebook.notebook_mcp_server"],
                 "env": {
                     "SCRIBE_URL": self.jupyter_url,
-                    "NOTEBOOK_OUTPUT_DIR": self.notebook_dir
+                    "NOTEBOOK_OUTPUT_DIR": self.notebook_dir,
+                    "SCRIBE_SESSION_ID": self.session_id,
                 }
             }
         }
 
-        for endpoint in self._mcp_endpoints:
-            config.update(endpoint)
+    @property
+    def model_info_text(self) -> str:
+        """Generate formatted text describing pre-loaded models."""
+        if not self.sandbox.model_handles:
+            return ""
 
-        return config
+        lines = ["### Pre-loaded Models", "The following models are already loaded in the kernel:"]
+        for handle in self.sandbox.model_handles:
+            model_name = handle.name if not handle.hidden else "<hidden>"
+            lines.append(f"- `{handle.var_name}`: {model_name}")
+            tokenizer_var = f"{handle.var_name}_tokenizer" if handle.var_name != "model" else "tokenizer"
+            lines.append(f"- `{tokenizer_var}`: Tokenizer")
+        lines.append("\n**Do NOT reload these models - they are already available.**")
+        return "\n".join(lines)
 
 
-def create_notebook_session(sandbox: Sandbox, name: str = "session", notebook_dir: str = "./outputs") -> NotebookSession:
-    """Create a notebook session and load models/repos into kernel."""
+def create_notebook_session(
+    sandbox: Sandbox,
+    workspace: Optional[Workspace] = None,
+    name: str = "session",
+    notebook_dir: str = "./outputs",
+) -> NotebookSession:
+    """
+    Create a notebook session connected to a sandbox.
+
+    Loads sandbox models/repos into the notebook kernel, then applies workspace configuration.
+
+    Args:
+        sandbox: Sandbox with jupyter running
+        workspace: Workspace configuration (optional)
+        name: Session name
+        notebook_dir: Directory for notebook files
+
+    Returns:
+        NotebookSession ready for agent execution
+    """
     if not sandbox.jupyter_url:
-        raise RuntimeError("Sandbox doesn't have jupyter. Use execution_mode=ExecutionMode.NOTEBOOK.")
+        raise RuntimeError("Sandbox needs jupyter. Use execution_mode=ExecutionMode.NOTEBOOK")
 
     print("Creating notebook session...")
     response = requests.post(
@@ -79,37 +146,57 @@ def create_notebook_session(sandbox: Sandbox, name: str = "session", notebook_di
         json={"experiment_name": name},
         timeout=30,
     )
-
-    if response.status_code != 200:
-        raise RuntimeError(f"Failed to start session (status {response.status_code}): {response.text}")
+    response.raise_for_status()
 
     session = NotebookSession(
         session_id=response.json()["session_id"],
         jupyter_url=sandbox.jupyter_url,
         sandbox=sandbox,
+        workspace_path=Path("/workspace"),
         notebook_dir=notebook_dir,
     )
 
-    for handle in sandbox._model_handles:
-        _attach_model(session, handle)
+    # Load sandbox resources into kernel
+    _load_sandbox_resources(session, sandbox, workspace)
 
-    for handle in sandbox._repo_handles:
-        _attach_repo(session, handle)
+    # Apply workspace configuration
+    if workspace:
+        session.setup(workspace)
 
     print(f"Session ready: {session.session_id}")
     return session
 
 
-def _attach_model(session: NotebookSession, handle: ModelHandle):
-    """Load model into kernel namespace."""
+def _load_sandbox_resources(session: NotebookSession, sandbox: Sandbox, workspace: Optional[Workspace]):
+    """Load models and repos from sandbox into notebook kernel."""
+    # Load models (if workspace allows)
+    if workspace is None or workspace.preload_models:
+        hidden = workspace.hidden_model_loading if workspace else True
+        for handle in sandbox.model_handles:
+            _load_model(session, handle, hidden=hidden)
+
+    # Setup repos
+    for handle in sandbox.repo_handles:
+        _setup_repo(session, handle)
+
+
+def _load_model(session: NotebookSession, handle: ModelHandle, hidden: bool = True):
+    """Load model into kernel namespace.
+
+    Args:
+        session: The notebook session
+        handle: Model handle with metadata
+        hidden: Whether to hide the loading cell (default True)
+    """
     var_info = f" as '{handle.var_name}'" if handle.var_name != "model" else ""
     model_name = "<hidden>" if handle.hidden else handle.name
     print(f"  Loading model{var_info}: {model_name}")
-    code = ModelLoader.generate_code(handle, target="namespace")
-    session.exec(code, hidden=True)
+
+    code = generate_model_loading_code(handle) + generate_model_verification_code(handle)
+    session.exec(code, hidden=hidden)
 
 
-def _attach_repo(session: NotebookSession, handle: RepoHandle):
+def _setup_repo(session: NotebookSession, handle: RepoHandle):
     """Setup repo workspace in kernel."""
     print(f"  Setting up repo: {handle.local_path}")
 
@@ -120,7 +207,6 @@ def _attach_repo(session: NotebookSession, handle: RepoHandle):
 import subprocess
 
 def container_exec(cmd: str) -> str:
-    """Run command in the container."""
     result = subprocess.run(
         ["docker", "exec", "{handle.container_name}", "bash", "-c", cmd],
         capture_output=True, text=True,

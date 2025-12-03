@@ -7,12 +7,49 @@ from enum import Enum
 from typing import Optional
 
 import modal
-import requests
 
-from .image import ModalImageBuilder
-from .volumes import get_or_create_volume, check_model_in_volume, download_model_to_volume, commit_volumes
-from .handles import ModelHandle, RepoHandle
-from ._scripts import DOCKERD_SCRIPT, jupyter_startup_script, code_server_install_script
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # Load .env file if it exists
+except ImportError:
+    pass  # dotenv not installed, skip
+
+from .utils import (
+    ModalImageBuilder,
+    get_or_create_volume,
+    check_model_in_volume,
+    download_model_to_volume,
+    commit_volumes,
+    start_jupyter,
+    start_docker_daemon,
+    start_code_server,
+    wait_for_service,
+)
+
+
+# Resource handles
+
+@dataclass
+class ModelHandle:
+    """Handle to a prepared model."""
+    name: str
+    volume_path: str
+    var_name: str = "model"
+    hidden: bool = False
+    is_peft: bool = False
+    base_model: Optional[str] = None
+    base_model_path: Optional[str] = None
+
+
+@dataclass
+class RepoHandle:
+    """Handle to a prepared repo."""
+    url: str
+    local_path: str
+    dockerfile: Optional[str] = None
+    container_name: Optional[str] = None
+    container_running: bool = False
+    install: str = False
 
 
 class ExecutionMode(Enum):
@@ -55,8 +92,6 @@ class SandboxConfig:
     debug_port: int = 8080
     rpc_timeout: int = 600
     wait_timeout: int = 300
-    api_key_names: list[str] = field(default_factory=lambda: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"])
-    hf_secret_name: str = "huggingface-secret"
     notebook_packages: list[str] = field(default_factory=lambda: [
         "jupyter_server", "ipykernel", "jupyter", "jupyter_client", "nbformat", "tornado",
         "fastmcp", "Pillow", "requests", "torch", "transformers", "accelerate",
@@ -82,23 +117,59 @@ class Sandbox:
         self._code_server_url: Optional[str] = None
         self._image_builder: Optional[ModalImageBuilder] = None
 
+    def _check_modal_auth(self):
+        """Check if Modal is properly authenticated."""
+        try:
+            user_config = modal.config._user_config
+            if not user_config or not isinstance(user_config, dict):
+                raise ValueError("No Modal configuration found")
+
+            # Check if any profile has a valid token
+            has_valid_token = any(
+                profile.get('token_id') and profile.get('token_secret')
+                for profile in user_config.values()
+                if isinstance(profile, dict)
+            )
+
+            if not has_valid_token:
+                raise ValueError("No valid Modal token found")
+
+        except Exception as e:
+            raise RuntimeError(
+                f"Modal is not configured properly: {e}\n\n"
+                "Please authenticate with Modal:\n"
+                "  1. Run: modal token new\n"
+                "  2. Follow the prompts to log in\n"
+                "  3. Try running your script again\n\n"
+                "For more info: https://modal.com/docs/guide/getting-started"
+            )
+
     def start(self, name: str = "sandbox") -> "Sandbox":
         """Build image and start the sandbox."""
         print(f"Starting sandbox: {name}")
 
-        self._prepare_models()
-        self._prepare_repos()
-        image = self._build_image()
+        # Check Modal authentication early
+        self._check_modal_auth()
 
+        # Setup models and repos (creates handles + volumes)
+        self._setup_models()
+        self._setup_repos()
+
+        # Build image and create sandbox
+        image = self._build_image()
         self._app = modal.App.lookup(name, create_if_missing=True)
         self._create_sandbox(image)
 
+        # Start docker if needed
         if self.config.docker_in_docker:
-            self._start_docker_daemon()
+            start_docker_daemon(self)
 
+        # Download models and clone repos
         self._download_models()
         self._clone_repos()
         commit_volumes(self._volumes)
+
+        # Start services (jupyter, code-server)
         self._start_services()
 
         print("Sandbox ready")
@@ -121,6 +192,39 @@ class Sandbox:
         self.exec(f"docker build -t {repo_handle.container_name} -f {dockerfile_path} {repo_handle.local_path}")
         self.exec(f"docker run -d --name {repo_handle.container_name} {repo_handle.container_name}")
         repo_handle.container_running = True
+
+    def write_file(self, path: str, content: str) -> None:
+        """Write a file to the sandbox, creating parent directories as needed."""
+        if not self._sandbox:
+            raise RuntimeError("Sandbox not started")
+
+        # Ensure parent directories exist
+        parent_dir = "/".join(path.split("/")[:-1])
+        if parent_dir:
+            self.ensure_dir(parent_dir)
+
+        # Write the file
+        with self._sandbox.open(path, "w") as f:
+            f.write(content)
+
+    def ensure_dir(self, path: str) -> None:
+        """Ensure a directory exists, creating parent directories as needed."""
+        if not self._sandbox:
+            raise RuntimeError("Sandbox not started")
+
+        # Build list of directories to create from root to leaf
+        dirs_to_create = []
+        current = path
+        while current and current != "/":
+            dirs_to_create.append(current)
+            current = "/".join(current.split("/")[:-1])
+
+        # Create directories from root to leaf
+        for d in reversed(dirs_to_create):
+            try:
+                self._sandbox.mkdir(d)
+            except Exception:
+                pass  # Directory already exists
 
     def terminate(self):
         """Terminate the sandbox."""
@@ -145,6 +249,16 @@ class Sandbox:
     @property
     def modal_sandbox(self) -> Optional[modal.Sandbox]:
         return self._sandbox
+
+    @property
+    def model_handles(self) -> list[ModelHandle]:
+        """List of prepared model handles."""
+        return list(self._model_handles)
+
+    @property
+    def repo_handles(self) -> list[RepoHandle]:
+        """List of prepared repo handles."""
+        return list(self._repo_handles)
 
     # Internal methods
 
@@ -171,7 +285,10 @@ class Sandbox:
     def _create_sandbox(self, image: modal.Image):
         """Create Modal sandbox with configuration."""
         gpu = f"{self.config.gpu}:{self.config.gpu_count}" if self.config.gpu else None
-        secrets = self._collect_secrets()
+
+        # Collect environment variables from .env file and config
+        secret_env_vars = self._collect_env_vars()
+        env_vars = {**self.config.env, **secret_env_vars}
 
         ports = list(self.config.encrypted_ports)
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
@@ -184,8 +301,7 @@ class Sandbox:
             "timeout": self.config.timeout,
             "app": self._app,
             **({"gpu": gpu} if gpu else {}),
-            **({"secrets": secrets} if secrets else {}),
-            **({"env": self.config.env} if self.config.env else {}),
+            **({"env": env_vars} if env_vars else {}),
             **({"volumes": self._volumes} if self._volumes else {}),
             **({"encrypted_ports": ports} if ports else {}),
             **({"experimental_options": {"enable_docker": True}} if self.config.docker_in_docker else {}),
@@ -208,7 +324,7 @@ class Sandbox:
 
         return stdout
 
-    def _prepare_models(self):
+    def _setup_models(self):
         """Setup model volumes and handles."""
         for model_cfg in self.config.models:
             base_model_path = None
@@ -234,7 +350,7 @@ class Sandbox:
                 base_model_path=base_model_path,
             ))
 
-    def _prepare_repos(self):
+    def _setup_repos(self):
         """Setup repo handles."""
         for repo_cfg in self.config.repos:
             url = repo_cfg.url if repo_cfg.url.startswith("http") else f"https://github.com/{repo_cfg.url}"
@@ -248,33 +364,25 @@ class Sandbox:
                 install=repo_cfg.install,
             ))
 
-    def _collect_secrets(self) -> list[modal.Secret]:
-        """Collect all Modal secrets."""
-        secrets = []
+    def _collect_env_vars(self) -> dict[str, str]:
+        """Collect environment variables from config.secrets names.
 
-        for secret_name in self.config.secrets:
-            try:
-                secrets.append(modal.Secret.from_name(secret_name))
-            except modal.exception.NotFoundError:
-                pass
+        This loads values from os.environ (including .env file) and passes
+        them as plain environment variables to the sandbox.
+        Modal secrets are NOT used - everything comes from local environment.
 
-        if self.config.hf_secret_name:
-            try:
-                secrets.append(modal.Secret.from_name(self.config.hf_secret_name))
-            except modal.exception.NotFoundError:
-                pass
+        Returns:
+            dict: Environment variables to pass to sandbox
+        """
+        env_vars = {}
 
-        if os.getenv("MODAL_TOKEN_ID") and os.getenv("MODAL_TOKEN_SECRET"):
-            secrets.append(modal.Secret.from_dict({
-                "MODAL_TOKEN_ID": os.environ["MODAL_TOKEN_ID"],
-                "MODAL_TOKEN_SECRET": os.environ["MODAL_TOKEN_SECRET"],
-            }))
+        for name in self.config.secrets:
+            if name in os.environ:
+                env_vars[name] = os.environ[name]
+            else:
+                print(f"  ⚠ Warning: '{name}' not found in environment, skipping")
 
-        api_keys = {k: os.environ[k] for k in self.config.api_key_names if k in os.environ}
-        if api_keys:
-            secrets.append(modal.Secret.from_dict(api_keys))
-
-        return secrets
+        return env_vars
 
     def _download_models(self):
         """Download all models to volumes."""
@@ -311,47 +419,13 @@ if not repo_path.exists():
     def _start_services(self):
         """Start execution mode services."""
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
-            self._start_jupyter()
+            start_jupyter(self, self.config.jupyter_port)
             self._jupyter_url = self._sandbox.tunnels()[self.config.jupyter_port].url
-            self._wait_for_service(f"{self._jupyter_url}/api/scribe/health")
+            wait_for_service(f"{self._jupyter_url}/api/scribe/health")
             print(f"Jupyter: {self._jupyter_url}")
 
         if self.config.debug:
-            self._start_code_server()
+            start_code_server(self, self.config.debug_port)
             self._code_server_url = self._sandbox.tunnels()[self.config.debug_port].url
-            self._wait_for_service(f"{self._code_server_url}/healthz")
+            wait_for_service(f"{self._code_server_url}/healthz")
             print(f"Code-server: {self._code_server_url}")
-
-    def _start_docker_daemon(self):
-        """Start docker daemon."""
-        self._sandbox.open("/start-dockerd.sh", "w").write(DOCKERD_SCRIPT)
-        self.exec("chmod +x /start-dockerd.sh && nohup /start-dockerd.sh > /var/log/dockerd.log 2>&1 &")
-
-        for _ in range(30):
-            try:
-                self.exec("docker info > /dev/null 2>&1")
-                return
-            except RuntimeError:
-                time.sleep(1)
-
-        raise RuntimeError("Docker daemon failed to start")
-
-    def _start_jupyter(self):
-        """Start Jupyter server."""
-        script = jupyter_startup_script(self.config.jupyter_port).replace('"', '\\"')
-        self.exec(f'nohup python -c "{script}" > /var/log/jupyter.log 2>&1 &')
-
-    def _start_code_server(self):
-        """Start code-server."""
-        self.exec(f"{code_server_install_script()} > /var/log/code-server-install.log 2>&1")
-        self.exec(f'nohup code-server --bind-addr 0.0.0.0:{self.config.debug_port} --auth none /workspace > /var/log/code-server.log 2>&1 &')
-
-    def _wait_for_service(self, url: str, max_retries: int = 100):
-        """Wait for HTTP service to be ready."""
-        for _ in range(max_retries):
-            try:
-                if requests.get(url, timeout=5).status_code == 200:
-                    return
-            except (requests.RequestException, ConnectionError):
-                pass
-            time.sleep(2)

@@ -1,4 +1,4 @@
-"""Simple agent runner using MCP and system prompts."""
+"""Thin wrapper over agent SDKs - just prompt + MCP."""
 
 from typing import Optional, Literal, AsyncIterator
 
@@ -16,22 +16,22 @@ DEFAULT_MODELS = {
 
 
 async def run_agent(
+    prompt: str,
     mcp_config: dict,
-    system_prompt: str,
-    task: str,
+    user_message: str = "",
     provider: Provider = "claude",
     model: Optional[str] = None,
 ) -> AsyncIterator[dict]:
     """
-    Run an agent with MCP tools and system prompt.
+    Run an agent with explicit prompt and MCP config.
 
-    This is a simple harness. For full control, use the provider
-    functions directly or write your own harness with Claude SDK.
+    Thin wrapper over agent SDKs - no magic, no hidden behavior.
+    You build the prompt, you provide the MCP config.
 
     Args:
-        mcp_config: MCP server configuration (from session.mcp_config)
-        system_prompt: System prompt (from session.system_prompt or custom)
-        task: What the agent should do
+        prompt: System prompt for the agent
+        mcp_config: MCP server configuration dict
+        user_message: Initial user message (optional, defaults to empty)
         provider: "claude", "gemini", or "openai"
         model: Override default model for provider
 
@@ -39,16 +39,21 @@ async def run_agent(
         Agent messages (dict format)
 
     Example:
-        # Using session primitives
-        session = create_notebook_session(sandbox)
-        session.add(steering_extension)
-        session.add(target_proxy, as_="mcp")
+        # Setup environment
+        session = create_notebook_session(sandbox, workspace)
 
+        # Build prompt explicitly
+        prompt = f'''
+        {session.model_info_text}
+
+        Find steering vectors for the loaded model.
+        '''
+
+        # Run agent (explicit prompt + mcp)
         async for msg in run_agent(
+            prompt=prompt,
             mcp_config=session.mcp_config,
-            system_prompt=session.system_prompt,
-            task="Find steering vectors",
-            provider="claude"
+            provider="claude",
         ):
             print(msg)
     """
@@ -59,8 +64,8 @@ async def run_agent(
     if provider == "claude":
         async for message in run_claude(
             mcp_config=mcp_config,
-            system_prompt=system_prompt,
-            task=task,
+            system_prompt=prompt,
+            task=user_message,
             model=model,
         ):
             yield message
@@ -68,8 +73,8 @@ async def run_agent(
     elif provider == "gemini":
         async for message in run_gemini(
             mcp_config=mcp_config,
-            system_prompt=system_prompt,
-            task=task,
+            system_prompt=prompt,
+            task=user_message,
             model=model,
         ):
             yield message
@@ -77,8 +82,8 @@ async def run_agent(
     elif provider == "openai":
         async for message in run_openai(
             mcp_config=mcp_config,
-            system_prompt=system_prompt,
-            task=task,
+            system_prompt=prompt,
+            task=user_message,
             model=model,
         ):
             yield message

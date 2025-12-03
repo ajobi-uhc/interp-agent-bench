@@ -385,6 +385,22 @@ async def start_new_session(experiment_name: Optional[str] = None) -> Dict[str, 
         - vscode_url: URL to connect with VSCode
         - kernel_name: Display name of the kernel
     """
+    # If there's already an auto-attached session, return it instead of creating a new one
+    global _sessions, _active_sessions
+    if len(_active_sessions) == 1:
+        session_id = list(_active_sessions)[0]
+        session_info = _sessions[session_id]
+        print(f"[INFO] Returning existing auto-attached session {session_id}", file=sys.stderr)
+        return {
+            "session_id": session_id,
+            "kernel_id": session_info.get("kernel_id", "unknown"),
+            "status": "started",
+            "notebook_path": session_info.get("notebook_dir", "./outputs"),
+            "vscode_url": session_info.get("jupyter_url", ""),
+            "kernel_name": "Pre-warmed Session",
+            "note": "Using pre-existing session from infrastructure"
+        }
+
     return await _start_session_internal(
         experiment_name=experiment_name,
         notebook_path=None,
@@ -734,4 +750,18 @@ async def server_status() -> str:
 
 # Main entry point for STDIO transport
 if __name__ == "__main__":
+    # Auto-attach to session if SCRIBE_SESSION_ID is set
+    session_id = os.environ.get("SCRIBE_SESSION_ID")
+    if session_id and "SCRIBE_URL" in os.environ:
+        jupyter_url = os.environ["SCRIBE_URL"]
+        notebook_dir = os.environ.get("NOTEBOOK_OUTPUT_DIR", "./outputs")
+
+        # Register the session automatically
+        _sessions[session_id] = {
+            "jupyter_url": jupyter_url,
+            "notebook_dir": notebook_dir
+        }
+        _active_sessions.add(session_id)
+        print(f"[INFO] Auto-attached to session {session_id} at {jupyter_url}", file=sys.stderr)
+
     mcp.run(transport="stdio")

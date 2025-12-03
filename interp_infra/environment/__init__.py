@@ -1,6 +1,30 @@
-"""Environment layer - Sandboxes, models, repos."""
+"""Environment layer - Sandboxes for running code remotely.
 
-from .sandbox import Sandbox, SandboxConfig, ExecutionMode, ModelConfig, RepoConfig
+Structure:
+- sandbox.py: Main Sandbox class (orchestration)
+- scoped_sandbox.py: ScopedSandbox class (isolated environments with RPC)
+- utils/: Utilities (services, volumes, image building, handles, RPC server, codegen)
+- clients/: Infrastructure provider clients (Modal, etc.)
+"""
+
+from .sandbox import (
+    Sandbox,
+    SandboxConfig,
+    ExecutionMode,
+    ModelConfig,
+    RepoConfig,
+    ModelHandle,
+    RepoHandle,
+)
 from .scoped_sandbox import ScopedSandbox
 
-__all__ = ["Sandbox", "SandboxConfig", "ExecutionMode", "ModelConfig", "RepoConfig", "ScopedSandbox"]
+__all__ = [
+    "Sandbox",
+    "SandboxConfig",
+    "ExecutionMode",
+    "ModelConfig",
+    "RepoConfig",
+    "ModelHandle",
+    "RepoHandle",
+    "ScopedSandbox",
+]
