@@ -5,11 +5,14 @@ raw HTTP requests or Jupyter Server API calls.
 """
 
 import atexit
+import asyncio
 import os
 import secrets
 import signal
 import subprocess
 import sys
+import threading
+import time
 from typing import Dict, Any, Optional, List, Union
 
 import requests
@@ -23,6 +26,15 @@ from scribe.notebook._notebook_server_utils import (
     cleanup_scribe_server,
     process_jupyter_outputs,
 )  # noqa: E402
+
+# Import logging (with fallback for standalone usage)
+try:
+    from interp_infra.harness.logging import get_logger
+    logger = get_logger("mcp_server")
+except ImportError:
+    import logging
+    logging.basicConfig(level=os.environ.get("INTERP_LOG_LEVEL", "INFO").upper())
+    logger = logging.getLogger("mcp_server")
 
 
 # Initialize MCP server
@@ -77,11 +89,11 @@ def ensure_server_running() -> str:
     """Ensure a Jupyter server is running and return its URL."""
     global _server_process, _server_port, _server_url, _is_external_server
 
-    print(f"[DEBUG] ensure_server_running called: _server_url={_server_url}, _is_external_server={_is_external_server}", file=sys.stderr)
+    logger.debug(f"ensure_server_running called: _server_url={_server_url}, _is_external_server={_is_external_server}")
 
     # Check if _server_url was already set (via set_jupyter_url tool)
     if _server_url is not None and _is_external_server:
-        print(f"[DEBUG] Using pre-set server URL: {_server_url}", file=sys.stderr)
+        logger.debug(f"Using pre-set server URL: {_server_url}")
         return _server_url
 
     # Check if SCRIBE_URL is set (external server with full URL)
@@ -206,8 +218,8 @@ async def _start_session_internal(
 
         # Start session
         headers = get_headers()
-        print(f"[DEBUG MCP] {tool_name}: Connecting to {server_url}", file=sys.stderr)
-        print(f"[DEBUG MCP] Headers: {list(headers.keys())}", file=sys.stderr)
+        logger.debug(f"{tool_name}: Connecting to {server_url}")
+        logger.debug(f"Headers: {list(headers.keys())}")
 
         response = requests.post(
             f"{server_url}/api/scribe/start", json=request_body, headers=headers
@@ -227,8 +239,16 @@ async def _start_session_internal(
         }
 
         # Track session for cleanup
-        global _active_sessions
+        global _active_sessions, _sessions
         _active_sessions.add(data["session_id"])
+
+        # Register session in _sessions for multi-session support
+        notebook_dir = os.environ.get("NOTEBOOK_OUTPUT_DIR", "./outputs")
+        _sessions[data["session_id"]] = {
+            "jupyter_url": server_url,
+            "notebook_dir": notebook_dir,
+            "notebook_path": data["notebook_path"]
+        }
 
         # Save notebook locally
         _save_notebook_locally(data["session_id"], data["notebook_path"])
@@ -331,7 +351,7 @@ async def attach_to_session(session_id: str, jupyter_url: str, notebook_dir: Opt
         "notebook_dir": notebook_dir
     }
 
-    print(f"[DEBUG] Registered session {session_id} -> {jupyter_url}", file=sys.stderr)
+    logger.debug(f"Registered session {session_id} -> {jupyter_url}")
 
     try:
         # Verify the session exists and is responsive
@@ -346,6 +366,11 @@ async def attach_to_session(session_id: str, jupyter_url: str, notebook_dir: Opt
             timeout=10,
         )
         check_response.raise_for_status()
+        check_data = check_response.json()
+
+        # Store remote notebook path for polling during execution
+        if "notebook_path" in check_data:
+            _sessions[session_id]["notebook_path"] = check_data["notebook_path"]
 
         # Track session for cleanup
         global _active_sessions
@@ -390,7 +415,7 @@ async def start_new_session(experiment_name: Optional[str] = None) -> Dict[str, 
     if len(_active_sessions) == 1:
         session_id = list(_active_sessions)[0]
         session_info = _sessions[session_id]
-        print(f"[INFO] Returning existing auto-attached session {session_id}", file=sys.stderr)
+        logger.info(f"Returning existing auto-attached session {session_id}")
         return {
             "session_id": session_id,
             "kernel_id": session_info.get("kernel_id", "unknown"),
@@ -512,10 +537,54 @@ def _save_notebook_locally(session_id: str, notebook_path: str):
         local_path = Path(notebook_dir) / Path(notebook_path).name
         local_path.write_text(json.dumps(notebook_data["content"], indent=2))
 
-        print(f"[DEBUG] Synced notebook to {local_path}", file=sys.stderr)
+        logger.debug(f"Synced notebook to {local_path}")
 
     except Exception as e:
-        print(f"[DEBUG] Warning: Failed to sync notebook: {e}", file=sys.stderr)
+        logger.warning(f"Failed to sync notebook: {e}")
+
+
+async def _execute_with_polling(
+    session_id: str,
+    execute_fn,
+    debug_msg: str,
+    skip_hidden: bool = False
+) -> Dict[str, Any]:
+    """Execute a function in background thread and save notebook once at start.
+
+    Args:
+        session_id: The session ID
+        execute_fn: Function to execute (should return response data dict)
+        debug_msg: Debug message (unused, kept for compatibility)
+        skip_hidden: If True, skip initial save (for hidden cells)
+
+    Returns:
+        The response data dict from execute_fn
+    """
+    result_container = {}
+    exception_container = {}
+
+    def execute():
+        try:
+            result_container['data'] = execute_fn()
+        except Exception as e:
+            exception_container['error'] = e
+
+    # Save notebook once at start so cell appears immediately
+    if not skip_hidden:
+        notebook_path = _sessions.get(session_id, {}).get("notebook_path")
+        if notebook_path:
+            _save_notebook_locally(session_id, notebook_path)
+
+    # Start execution and wait for it to complete
+    thread = threading.Thread(target=execute)
+    thread.start()
+    thread.join()
+
+    # Check if there was an exception
+    if 'error' in exception_container:
+        raise exception_container['error']
+
+    return result_container['data']
 
 
 async def _execute_code_internal(
@@ -531,17 +600,31 @@ async def _execute_code_internal(
     try:
         jupyter_url = _get_session_url(session_id)
 
-        response = requests.post(
-            f"{jupyter_url}/api/scribe/exec",
-            json={"session_id": session_id, "code": code, "hidden": hidden},
-            headers={},
-        )
-        response.raise_for_status()
-        data = response.json()
+        # Define the execution function
+        def execute_fn():
+            response = requests.post(
+                f"{jupyter_url}/api/scribe/exec",
+                json={"session_id": session_id, "code": code, "hidden": hidden},
+                headers={},
+            )
+            response.raise_for_status()
+            return response.json()
 
-        # Save notebook locally after execution
+        # Execute with polling
+        data = await _execute_with_polling(
+            session_id,
+            execute_fn,
+            "Cell executing, syncing notebook...",
+            skip_hidden=hidden
+        )
+
+        # Save notebook locally after execution (final state)
         if "notebook_path" in data:
-            _save_notebook_locally(session_id, data["notebook_path"])
+            notebook_path = data["notebook_path"]
+            # Store notebook_path for future polling
+            if session_id in _sessions:
+                _sessions[session_id]["notebook_path"] = notebook_path
+            _save_notebook_locally(session_id, notebook_path)
 
         # Process outputs
         outputs, images = process_jupyter_outputs(
@@ -648,17 +731,30 @@ async def edit_cell(
     try:
         jupyter_url = _get_session_url(session_id)
 
-        response = requests.post(
-            f"{jupyter_url}/api/scribe/edit",
-            json={"session_id": session_id, "code": code, "cell_index": cell_index},
-            headers={},
-        )
-        response.raise_for_status()
-        data = response.json()
+        # Define the execution function
+        def execute_fn():
+            response = requests.post(
+                f"{jupyter_url}/api/scribe/edit",
+                json={"session_id": session_id, "code": code, "cell_index": cell_index},
+                headers={},
+            )
+            response.raise_for_status()
+            return response.json()
 
-        # Save notebook locally after editing cell
+        # Execute with polling
+        data = await _execute_with_polling(
+            session_id,
+            execute_fn,
+            "Cell editing/executing, syncing notebook...",
+            skip_hidden=False
+        )
+
+        # Save notebook locally after editing cell (final state)
         if "notebook_path" in data:
-            _save_notebook_locally(session_id, data["notebook_path"])
+            notebook_path = data["notebook_path"]
+            if session_id in _sessions:
+                _sessions[session_id]["notebook_path"] = notebook_path
+            _save_notebook_locally(session_id, notebook_path)
 
         # Process outputs
         outputs, images = process_jupyter_outputs(
@@ -762,6 +858,6 @@ if __name__ == "__main__":
             "notebook_dir": notebook_dir
         }
         _active_sessions.add(session_id)
-        print(f"[INFO] Auto-attached to session {session_id} at {jupyter_url}", file=sys.stderr)
+        logger.info(f"Auto-attached to session {session_id} at {jupyter_url}")
 
     mcp.run(transport="stdio")

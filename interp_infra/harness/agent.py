@@ -1,8 +1,10 @@
 """Thin wrapper over agent SDKs - just prompt + MCP."""
 
 from typing import Optional, Literal, AsyncIterator
+import asyncio
 
 from .providers import run_claude, run_openai, run_gemini
+from .logging import run_agent_with_logging
 
 
 Provider = Literal["claude", "gemini", "openai"]
@@ -21,6 +23,8 @@ async def run_agent(
     user_message: str = "",
     provider: Provider = "claude",
     model: Optional[str] = None,
+    kwargs: Optional[dict] = None,
+    enable_logging: bool = True,
 ) -> AsyncIterator[dict]:
     """
     Run an agent with explicit prompt and MCP config.
@@ -34,6 +38,8 @@ async def run_agent(
         user_message: Initial user message (optional, defaults to empty)
         provider: "claude", "gemini", or "openai"
         model: Override default model for provider
+        kwargs: Additional provider-specific options
+        enable_logging: Enable logging adapter (default: True)
 
     Yields:
         Agent messages (dict format)
@@ -60,33 +66,39 @@ async def run_agent(
     # Use model parameter or default for provider
     model = model or DEFAULT_MODELS[provider]
 
-    # Run with appropriate provider
+    # Get provider stream
     if provider == "claude":
-        async for message in run_claude(
+        stream = run_claude(
             mcp_config=mcp_config,
             system_prompt=prompt,
             task=user_message,
             model=model,
-        ):
-            yield message
+            kwargs=kwargs or {}
+        )
 
     elif provider == "gemini":
-        async for message in run_gemini(
+        stream = run_gemini(
             mcp_config=mcp_config,
             system_prompt=prompt,
             task=user_message,
             model=model,
-        ):
-            yield message
+        )
 
     elif provider == "openai":
-        async for message in run_openai(
+        stream = run_openai(
             mcp_config=mcp_config,
             system_prompt=prompt,
             task=user_message,
             model=model,
-        ):
-            yield message
+        )
 
     else:
         raise ValueError(f"Unknown provider: {provider}")
+
+    # Wrap with logging if enabled
+    if enable_logging:
+        async for message in run_agent_with_logging(stream):
+            yield message
+    else:
+        async for message in stream:
+            yield message

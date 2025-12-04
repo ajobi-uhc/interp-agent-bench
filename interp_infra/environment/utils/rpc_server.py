@@ -5,8 +5,18 @@ import os
 import sys
 import traceback
 import inspect
+import logging
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Callable, get_type_hints, get_origin
+
+# Configure logging
+LOG_LEVEL = os.environ.get("INTERP_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    stream=sys.stderr,
+)
+logger = logging.getLogger("rpc_server")
 
 
 class RPCHandler(BaseHTTPRequestHandler):
@@ -37,9 +47,12 @@ class RPCHandler(BaseHTTPRequestHandler):
             if fn not in self.functions:
                 raise ValueError(f"Function '{fn}' not found")
 
+            logger.info(f"🔧 Calling {fn}({', '.join(f'{k}={v!r}' for k, v in kwargs.items())})")
             result = self.functions[fn](*args, **kwargs)
+            logger.info(f"✓ {fn} completed")
             resp = {"ok": True, "result": result}
         except Exception as e:
+            logger.error(f"✗ {fn} failed: {e}")
             resp = {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
         self.send_response(200)
@@ -134,8 +147,7 @@ def list_configured_models() -> dict:
 def serve(port: int, user_code: str):
     """Start RPC server with user code."""
     try:
-        print(f"Starting RPC server on port {port}", file=sys.stderr)
-        sys.stderr.flush()
+        logger.info(f"Starting RPC server on port {port}")
 
         _exposed_functions = {}
 
@@ -154,15 +166,13 @@ def serve(port: int, user_code: str):
             "list_configured_models": list_configured_models,
         }
 
-        print("Executing user code...", file=sys.stderr)
-        sys.stderr.flush()
+        logger.debug("Executing user code...")
 
         try:
             exec(user_code, namespace)
         except Exception as e:
             error_msg = f"ERROR executing user code: {e}\n{traceback.format_exc()}"
-            print(error_msg, file=sys.stderr)
-            sys.stderr.flush()
+            logger.error(error_msg)
 
             # Also write to file so we can definitely read it
             try:
@@ -173,8 +183,7 @@ def serve(port: int, user_code: str):
 
             raise
 
-        print(f"User code executed successfully", file=sys.stderr)
-        sys.stderr.flush()
+        logger.info("User code executed successfully")
 
         if not _exposed_functions:
             raise RuntimeError("No functions exposed with @expose decorator")
@@ -187,8 +196,7 @@ def serve(port: int, user_code: str):
                 f.write(error_msg)
         except:
             pass
-        print(error_msg, file=sys.stderr)
-        sys.stderr.flush()
+        logger.error(error_msg)
         sys.exit(1)
 
     # Build schemas
@@ -205,14 +213,14 @@ def serve(port: int, user_code: str):
     RPCHandler.functions = _exposed_functions
     RPCHandler.schemas = schemas
 
-    print(f"Exposed functions: {list(_exposed_functions.keys())}", file=sys.stderr)
-    print(f"Listening on 0.0.0.0:{port}", file=sys.stderr)
+    logger.info(f"Exposed functions: {list(_exposed_functions.keys())}")
+    logger.info(f"Listening on 0.0.0.0:{port}")
     HTTPServer(("0.0.0.0", port), RPCHandler).serve_forever()
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python rpc_server.py <port> <code_file>", file=sys.stderr)
+        logger.error("Usage: python rpc_server.py <port> <code_file>")
         sys.exit(1)
 
     port = int(sys.argv[1])

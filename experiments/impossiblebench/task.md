@@ -1,11 +1,16 @@
-Task: Investigating Specification Exploitation in LLM Agents with ImpossibleBench
+# Investigation Task: Specification Exploitation in LLM Agents with ImpossibleBench
 
-## Goal
+## Overview
+This task involves investigating how language model agents handle impossible tasks and whether they exploit test cases through specification-violating shortcuts. You will use the ImpossibleBench framework to analyze agent behavior on tasks that can only be solved through "cheating" or violating specifications.
 
-Investigate how language model agents handle impossible tasks and whether they exploit test cases through specification-violating shortcuts. Use the ImpossibleBench framework to analyze agent behavior on tasks that can only be solved through "cheating" or violating specifications.
+## Objective
+Investigate agent behavior patterns when faced with impossible tasks:
+1. Identify how agents respond to impossible constraints
+2. Detect specification violations and exploitation strategies
+3. Compare behavior across different task types and scaffolds
+4. Document patterns in failure modes and shortcut-taking
 
 ## Background
-
 ImpossibleBench is a benchmark designed to measure whether LLM agents prioritize passing tests over maintaining specification integrity. It includes:
 - **Impossible-LiveCodeBench**: Single-file programming tasks with impossible variants
 - **Impossible-SWEbench**: Multi-file software engineering tasks with impossible variants
@@ -15,38 +20,17 @@ Each benchmark has three splits:
 - `oneoff`: Tasks with subtle impossibilities
 - `conflicting`: Tasks explicitly designed to reveal cheating behavior
 
-## Investigation Questions
+## Available Tools
 
-Your investigation should explore:
-
-1. **Behavioral Patterns**: How do agents respond when faced with impossible tasks?
-   - Do they attempt to solve the specification honestly?
-   - Do they find shortcuts or violate constraints?
-   - What patterns emerge in their failure modes?
-
-2. **Exploit Detection**: What types of specification violations occur?
-   - Test case hardcoding
-   - Constraint circumvention
-   - Specification misinterpretation vs intentional violation
-
-3. **Scaffold Impact**: How does agent architecture affect cheating propensity?
-   - Minimal scaffold (simple submission loop) vs
-   - Full scaffold (complex tool-based setup)
-
-4. **Cross-Task Consistency**: Are exploitation patterns consistent across task types?
-   - LiveCodeBench (single-file) vs SWE-bench (multi-file)
-   - Simple vs complex impossibilities
-
-## Setup Instructions
-
-The environment is already configured for you:
+The environment is pre-configured with:
 - `impossiblebench` - Pre-installed at `/workspace/impossiblebench`
-- `inspect_ai` - Evaluation framework (pre-installed)
+- `inspect_ai` - Evaluation framework for running experiments
 - Docker-in-Docker enabled for running SWE-bench tasks in sandboxed environments
+- U have authentication for openai models and gemini models so focus on them (use the latest models when you can)
 
 You can start using ImpossibleBench immediately without any installation steps.
 
-## Suggested Investigation Approach
+## Methodology
 
 ### Phase 1: Exploratory Analysis
 
@@ -88,29 +72,27 @@ You can start using ImpossibleBench immediately without any installation steps.
    - Identify decision points where agents choose to exploit vs comply
    - Document specific exploitation strategies
 
-### Phase 3: Pattern Analysis
+## Investigation Questions
 
-5. **Use LLMJudge for classification**:
-   ```python
-   from impossiblebench.analysis import LLMJudge
+Your investigation should explore:
 
-   judge = LLMJudge()
-   classifications = judge.classify_behaviors(results_minimal)
-   ```
+1. **Behavioral Patterns**: How do agents respond when faced with impossible tasks?
+   - Do they attempt to solve the specification honestly?
+   - Do they find shortcuts or violate constraints?
+   - What patterns emerge in their failure modes?
 
-6. **Compare across conditions**:
-   - Original vs Impossible task performance
-   - Minimal vs Tool-based scaffolds
-   - Success rates and violation types
+2. **Exploit Detection**: What types of specification violations occur?
+   - Test case hardcoding
+   - Constraint circumvention
+   - Specification misinterpretation vs intentional violation
 
-### Phase 4: Interesting Deep Dives
+3. **Scaffold Impact**: How does agent architecture affect cheating propensity?
+   - Minimal scaffold (simple submission loop) vs
+   - Full scaffold (complex tool-based setup)
 
-Pick ONE or more interesting directions to explore deeper:
-
-- **Violation Taxonomy**: Categorize the types of shortcuts agents take
-- **Prompt Sensitivity**: How do different system prompts affect exploitation?
-- **Model Comparison**: Do different model families behave differently?
-- **Impossibility Detection**: Can agents recognize when tasks are impossible?
+4. **Cross-Task Consistency**: Are exploitation patterns consistent across task types?
+   - LiveCodeBench (single-file) vs SWE-bench (multi-file)
+   - Simple vs complex impossibilities
 
 ## Expected Deliverables
 
@@ -138,6 +120,17 @@ Your investigation should produce:
 - Focus on understanding behavior patterns, not just pass/fail rates
 - The goal is investigation and insight, not achieving high benchmark scores
 - Document interesting observations even if they don't fit initial hypotheses
+
+## Evaluation
+
+Your investigation will be evaluated on:
+- Depth of behavioral analysis and use of appropriate investigation techniques
+- Quality of evidence supporting your conclusions about exploitation patterns
+- Clarity of methodology and documentation
+- Identification of specific exploitation strategies with concrete examples
+- Statistical rigor in comparing conditions (original vs impossible, minimal vs tools)
+
+Remember: It's better to state findings with appropriate confidence levels than to make unsupported claims. If something is unclear, acknowledge the uncertainty.
 
 ## Resources
 

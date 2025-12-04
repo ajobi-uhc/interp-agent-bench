@@ -25,6 +25,9 @@ from .utils import (
     start_code_server,
     wait_for_service,
 )
+from ..harness.logging import get_logger
+
+logger = get_logger("sandbox")
 
 
 # Resource handles
@@ -144,9 +147,22 @@ class Sandbox:
                 "For more info: https://modal.com/docs/guide/getting-started"
             )
 
-    def start(self, name: str = "sandbox") -> "Sandbox":
-        """Build image and start the sandbox."""
-        print(f"Starting sandbox: {name}")
+    def start(self, name: str = "sandbox", snapshot_image: Optional[modal.Image] = None) -> "Sandbox":
+        """
+        Build image and start the sandbox.
+
+        Args:
+            name: Name for the sandbox app
+            snapshot_image: Optional snapshot image to restore from. If provided,
+                          this will be used as the base image instead of building fresh.
+
+        Returns:
+            Self for chaining
+        """
+        if snapshot_image:
+            logger.info(f"Starting sandbox from snapshot: {name}")
+        else:
+            logger.info(f"Starting sandbox: {name}")
 
         # Check Modal authentication early
         self._check_modal_auth()
@@ -155,8 +171,13 @@ class Sandbox:
         self._setup_models()
         self._setup_repos()
 
-        # Build image and create sandbox
-        image = self._build_image()
+        # Build image (use snapshot if provided, otherwise build fresh)
+        if snapshot_image:
+            logger.info("Using snapshot image as base...")
+            image = snapshot_image
+        else:
+            image = self._build_image()
+
         self._app = modal.App.lookup(name, create_if_missing=True)
         self._create_sandbox(image)
 
@@ -164,20 +185,50 @@ class Sandbox:
         if self.config.docker_in_docker:
             start_docker_daemon(self)
 
-        # Download models and clone repos
-        self._download_models()
-        self._clone_repos()
-        commit_volumes(self._volumes)
+        # Download models and clone repos (only if not using snapshot)
+        if not snapshot_image:
+            self._download_models()
+            self._clone_repos()
+            logger.info("Models and repos are set up")
+            commit_volumes(self._volumes)
 
         # Start services (jupyter, code-server)
+        logger.info("Starting services...")
         self._start_services()
 
-        print("Sandbox ready")
+        logger.info("Sandbox ready")
         return self
 
-    def exec(self, cmd: str) -> str:
+    @classmethod
+    def from_snapshot(cls, snapshot_image: modal.Image, config: SandboxConfig, name: str = "sandbox") -> "Sandbox":
+        """
+        Create and start a new sandbox from a snapshot.
+
+        This is a convenience method that creates a Sandbox instance and starts it
+        with the provided snapshot image.
+
+        Args:
+            snapshot_image: The snapshot image to restore from
+            config: Configuration for the new sandbox
+            name: Name for the sandbox app
+
+        Returns:
+            Started Sandbox instance
+
+        Example:
+            # Create snapshot from existing sandbox
+            snapshot = sandbox1.snapshot("checkpoint 1")
+
+            # Later, restore to new sandbox
+            sandbox2 = Sandbox.from_snapshot(snapshot, config)
+            # sandbox2 now has all files from when snapshot was taken
+        """
+        sandbox = cls(config)
+        return sandbox.start(name=name, snapshot_image=snapshot_image)
+
+    def exec(self, cmd: str, timeout: Optional[int] = None) -> str:
         """Execute shell command in sandbox."""
-        return self._exec("bash", "-c", cmd)
+        return self._exec("bash", "-c", cmd, timeout=timeout)
 
     def exec_python(self, code: str) -> str:
         """Execute Python code in sandbox."""
@@ -226,13 +277,71 @@ class Sandbox:
             except Exception:
                 pass  # Directory already exists
 
-    def terminate(self):
-        """Terminate the sandbox."""
+    def snapshot(self, description: str = "") -> modal.Image:
+        """
+        Create a filesystem snapshot of the sandbox's current state.
+
+        The snapshot captures all filesystem changes since the sandbox started.
+        You can later create a new sandbox from this snapshot to restore the state.
+
+        Args:
+            description: Optional description for the snapshot
+
+        Returns:
+            modal.Image that can be passed to Sandbox.from_snapshot()
+
+        Example:
+            # Work in sandbox
+            sandbox.exec("pip install some-package")
+            sandbox.exec("echo 'test' > /data.txt")
+
+            # Save state
+            snapshot = sandbox.snapshot("After installing packages")
+
+            # Later, restore from snapshot
+            new_sandbox = Sandbox.from_snapshot(snapshot, config)
+        """
+        if not self._sandbox:
+            raise RuntimeError("Sandbox not started - cannot create snapshot")
+
+        logger.info(f"Creating filesystem snapshot{f': {description}' if description else ''}...")
+        image = self._sandbox.snapshot_filesystem()
+        logger.info(f"✓ Snapshot created")
+
+        return image
+
+    def terminate(self, save_snapshot: bool = False, snapshot_description: str = "") -> Optional[modal.Image]:
+        """
+        Terminate the sandbox, optionally saving a snapshot first.
+
+        Args:
+            save_snapshot: If True, create a snapshot before terminating
+            snapshot_description: Description for the snapshot
+
+        Returns:
+            modal.Image if save_snapshot=True, otherwise None
+        """
+        snapshot_image = None
+
+        if save_snapshot and self._sandbox:
+            snapshot_image = self.snapshot(snapshot_description)
+
         if self._sandbox:
-            self._sandbox.terminate()
-            self._sandbox = None
+            try:
+                self._sandbox.terminate()
+            except (KeyboardInterrupt, Exception) as e:
+                # If termination fails (e.g., due to Ctrl+C), log and continue
+                logger.debug(f"Sandbox termination interrupted: {e}")
+            finally:
+                self._sandbox = None
+
         if self._image_builder:
-            self._image_builder.cleanup()
+            try:
+                self._image_builder.cleanup()
+            except (KeyboardInterrupt, Exception) as e:
+                logger.debug(f"Image builder cleanup interrupted: {e}")
+
+        return snapshot_image
 
     @property
     def jupyter_url(self) -> Optional[str]:
@@ -309,12 +418,16 @@ class Sandbox:
 
         self._sandbox = modal.Sandbox.create(**kwargs)
 
-    def _exec(self, *args) -> str:
+    def _exec(self, *args, timeout: Optional[int] = None) -> str:
         """Execute command and return stdout."""
         if not self._sandbox:
             raise RuntimeError("Sandbox not started")
 
-        p = self._sandbox.exec(*args)
+        kwargs = {}
+        if timeout is not None:
+            kwargs['timeout'] = timeout
+
+        p = self._sandbox.exec(*args, **kwargs)
         stdout = p.stdout.read()
         p.wait()
 
@@ -380,7 +493,7 @@ class Sandbox:
             if name in os.environ:
                 env_vars[name] = os.environ[name]
             else:
-                print(f"  ⚠ Warning: '{name}' not found in environment, skipping")
+                logger.warning(f"'{name}' not found in environment, skipping")
 
         return env_vars
 
@@ -388,44 +501,42 @@ class Sandbox:
         """Download all models to volumes."""
         for handle in self._model_handles:
             if handle.is_peft and handle.base_model and not check_model_in_volume(self, handle.base_model_path):
-                print(f"Downloading base: {handle.base_model}")
+                logger.info(f"Downloading base: {handle.base_model}")
                 download_model_to_volume(self, handle.base_model, handle.base_model_path)
 
             if not check_model_in_volume(self, handle.volume_path):
                 model_name = "model" if handle.hidden else handle.name
-                print(f"Downloading: {model_name}")
+                logger.info(f"Downloading: {model_name}")
                 download_model_to_volume(self, handle.name, handle.volume_path)
 
     def _clone_repos(self):
         """Clone all repos."""
         for handle in self._repo_handles:
-            print(f"Cloning: {handle.url}")
-            self.exec_python(f'''
-import subprocess
-from pathlib import Path
-
-repo_path = Path("{handle.local_path}")
-repo_path.parent.mkdir(parents=True, exist_ok=True)
-
-if not repo_path.exists():
-    subprocess.run(["git", "clone", "{handle.url}", str(repo_path)], check=True)
-''')
+            logger.info(f"Cloning: {handle.url}")
+            self.exec(f"git clone {handle.url} {handle.local_path}")
+            logger.info(f"  ✓ Cloned to {handle.local_path}")
             if handle.install:
+                logger.info(f"  Installing dependencies for repo {handle.url}...")
                 try:
-                    self.exec(f"cd {handle.local_path} && {handle.install}")
-                except RuntimeError:
-                    pass
-
+                    self.exec(f"cd {handle.local_path} && {handle.install}", timeout=120)
+                    logger.info(f"  ✓ Dependencies installed")
+                except Exception as e:
+                    error_msg = str(e)
+                    if "timeout" in error_msg.lower():
+                        logger.warning(f"Installation timed out for repo {handle.url}, continuing...")
+                    else:
+                        logger.warning(f"Installation failed for repo {handle.url}, continuing...")
+                    logger.debug(f"Error: {error_msg}")
     def _start_services(self):
         """Start execution mode services."""
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
             start_jupyter(self, self.config.jupyter_port)
             self._jupyter_url = self._sandbox.tunnels()[self.config.jupyter_port].url
             wait_for_service(f"{self._jupyter_url}/api/scribe/health")
-            print(f"Jupyter: {self._jupyter_url}")
+            logger.info(f"Jupyter: {self._jupyter_url}")
 
         if self.config.debug:
             start_code_server(self, self.config.debug_port)
             self._code_server_url = self._sandbox.tunnels()[self.config.debug_port].url
             wait_for_service(f"{self._code_server_url}/healthz")
-            print(f"Code-server: {self._code_server_url}")
+            logger.info(f"Code-server: {self._code_server_url}")

@@ -10,6 +10,9 @@ import requests
 from .sandbox import Sandbox, SandboxConfig
 from .utils.codegen import generate_rpc_client, generate_rpc_prompt
 from ..workspace import Library, Skill, Workspace
+from ..harness.logging import get_logger
+
+logger = get_logger("scoped_sandbox")
 
 
 ExposeMode = Literal["mcp", "library", "prompt", "skill"]
@@ -236,13 +239,23 @@ class ScopedSandbox(Sandbox):
         with self._sandbox.open("/root/user_code.py", "w") as f:
             f.write(code)
 
-        print("Starting RPC server...")
+        logger.info("Starting RPC server...")
 
-        # Start process with stderr redirected to file for easier debugging
-        self._rpc_process = self._sandbox.exec(
-            "bash", "-c",
-            f"python -u /root/rpc_server.py {self._rpc_port} /root/user_code.py 2>/tmp/rpc_stderr.log"
-        )
+        # Check if we should show RPC logs
+        import os
+        show_rpc_logs = os.environ.get("INTERP_SHOW_RPC_LOGS", "false").lower() == "true"
+
+        if show_rpc_logs:
+            # Don't redirect stderr - let it show in real-time
+            self._rpc_process = self._sandbox.exec(
+                "python", "-u", "/root/rpc_server.py", str(self._rpc_port), "/root/user_code.py"
+            )
+        else:
+            # Redirect stderr to file for silent operation
+            self._rpc_process = self._sandbox.exec(
+                "bash", "-c",
+                f"python -u /root/rpc_server.py {self._rpc_port} /root/user_code.py 2>/tmp/rpc_stderr.log"
+            )
 
         # Give it a moment to start
         time.sleep(2)
@@ -252,8 +265,8 @@ class ScopedSandbox(Sandbox):
 
     def _wait_for_port(self, port: int, max_retries: int = 100):
         """Wait for server on port, showing logs in real-time."""
-        print(f"Waiting for RPC server on port {port}...")
-        print("  (showing server logs below)\n")
+        logger.info(f"Waiting for RPC server on port {port}...")
+        logger.debug("(showing server logs below)")
 
         last_log_pos = 0  # Track what we've already printed
 
@@ -267,7 +280,7 @@ class ScopedSandbox(Sandbox):
                         # Print new lines with indentation
                         for line in new_output.rstrip().split('\n'):
                             if line.strip():
-                                print(f"  | {line}")
+                                logger.debug(f"  | {line}")
                     last_log_pos = len(stderr_log)
             except:
                 pass
@@ -282,7 +295,7 @@ class ScopedSandbox(Sandbox):
                             error_log = self.exec("cat /tmp/rpc_error.log 2>/dev/null || echo ''")
                             if error_log and error_log.strip():
                                 # Real error occurred
-                                print("\n✗ RPC server process crashed\n")
+                                logger.error("✗ RPC server process crashed")
                                 raise RuntimeError(f"RPC server crashed:\n\n{error_log.strip()}")
                         except RuntimeError:
                             raise
@@ -299,16 +312,27 @@ class ScopedSandbox(Sandbox):
                 response = requests.get(url, timeout=3)
                 if response.ok:
                     self._rpc_url = url
-                    print(f"\n✓ RPC server ready: {url}")
+                    logger.info(f"✓ RPC server ready: {url}")
                     return
             except requests.exceptions.RequestException:
                 pass  # Server not ready yet
             except Exception as e:
                 if i == 0:
-                    print(f"  (waiting for tunnel... {e})")
+                    logger.debug(f"(waiting for tunnel... {e})")
 
             time.sleep(3)
 
         # Timed out after max_retries
-        print(f"\n✗ RPC server timed out after {max_retries * 3}s")
+        logger.error(f"✗ RPC server timed out after {max_retries * 3}s")
         raise RuntimeError(f"RPC server failed to start within {max_retries * 3}s")
+
+    def show_rpc_logs(self, lines: int = 50):
+        """Show recent RPC server logs (useful for debugging)."""
+        try:
+            logs = self.exec(f"tail -n {lines} /tmp/rpc_stderr.log 2>/dev/null || echo 'No logs yet'")
+            logger.info("Recent RPC server logs:")
+            for line in logs.split('\n'):
+                if line.strip():
+                    logger.info(f"  | {line}")
+        except Exception as e:
+            logger.error(f"Failed to read RPC logs: {e}")
