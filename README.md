@@ -2,10 +2,18 @@
 
 **[Docs](https://ajobi-uhc.github.io/seer/)** 
 
+## You need modal to run Seer
+We use modal as the gpu infrastructure provider
+To be able to use Seer sign up for an account on modal and configure a local token (https://modal.com/)
+Once you have signed in and installed the repo - activate the venv and run modal token new (this configures a local token to use)
+
+
 ## What is Seer?
 Seer (Sandboxed execution environments for agents) is a small hackable library designed to make it easy to run agents on tasks
 - Define replicable environments for agents to run in and run tasks (eg. replicate anthropics introspection paper)
 - Allows you to define and use agents interactively to do interp research tasks  (eg. steering against eval awareness)
+
+
 
 ## Example runs
 Some examples of runs that have been done here:
@@ -14,6 +22,8 @@ Some examples of runs that have been done here:
 - Discover and categorize the main refusal behaviours of this model
 
 ## Quick Start
+
+### 0. Get a modal account at (https://modal.com/)
 
 ### 1. Setup Environment
 
@@ -46,12 +56,12 @@ HF_TOKEN=hf_...
 ### 4. Run a predefined experiment
 
 ```bash
-cd experiments/notebook-intro
+cd experiments/sandbox-intro
 python main.py
 ```
 
 **What happens:**
-1. Modal provisions GPU (~30 sec)
+1. Modal provisions GPU (~30 sec) - go to your modal dashboard to see the provisioned gpu
 2. Downloads models to Modal volume (cached for future runs)
 3. Starts sandbox with specified execution mode
 4. Agent runs the experiment

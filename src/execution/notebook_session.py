@@ -141,6 +141,8 @@ def create_notebook_session(
         raise RuntimeError("Sandbox needs jupyter. Use execution_mode=ExecutionMode.NOTEBOOK")
 
     print("Creating notebook session...")
+    print("Access your notebook at:", sandbox.jupyter_url + '/tree/notebooks')
+    print("A notebook is also created in your outputs directory to view locally.")
     response = requests.post(
         f"{sandbox.jupyter_url}/api/scribe/start",
         json={"experiment_name": name},

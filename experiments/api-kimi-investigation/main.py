@@ -20,7 +20,7 @@ async def main():
 
     config = SandboxConfig(
         gpu=None,
-        execution_mode=ExecutionMode.CLI,
+        execution_mode=ExecutionMode.NOTEBOOK,
         python_packages=["openai>=1.88.0", "pandas", "matplotlib", "numpy"],
         secrets=["OPENROUTER_API_KEY"],
     )
