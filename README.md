@@ -19,19 +19,31 @@ Some examples of runs that have been done here:
 
 ```bash
 # Clone and setup
-git clone <repo-url>
+git clone https://github.com/ajobi-uhc/seer
+cd seer
 uv sync
 ```
 
 ### 2. Configure Modal (for GPU access)
 
 ```bash
-# Install and authenticate Modal
-pip install modal
+# Authenticate with Modal
 modal token new
 ```
 
-### 3. Run a predefined experiment
+### 3. Set up API Keys
+
+Create a `.env` file in the project root:
+
+```bash
+# Required for agent harness
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional - only needed if using HuggingFace gated models
+HF_TOKEN=hf_...
+```
+
+### 4. Run a predefined experiment
 
 ```bash
 cd experiments/notebook-intro

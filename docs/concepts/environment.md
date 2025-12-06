@@ -24,17 +24,47 @@ config = SandboxConfig(
 
 ## Sandbox vs ScopedSandbox
 
-**Sandbox:** Full environment, agent has broad access
-**ScopedSandbox:** Limited environment for RPC, agent calls functions remotely
+### Sandbox (Full Access)
+
+Agent has full access to the GPU environment. Use with Notebook or CLI mode.
 
 ```python
-# Full sandbox
 sandbox = Sandbox(config).start()
-
-# Scoped sandbox (RPC pattern)
-scoped = ScopedSandbox(config).start()
-model_tools = scoped.serve("interface.py", expose_as="library")
+session = create_notebook_session(sandbox, workspace)
+# Agent can run arbitrary Python on GPU
 ```
+
+### ScopedSandbox (RPC Only)
+
+Agent runs locally, GPU only exposes specific functions via RPC. Use with Local mode.
+
+```python
+scoped = ScopedSandbox(config).start()
+
+# Serve interface.py - functions marked with @expose become RPC-callable
+model_tools = scoped.serve(
+    "interface.py",
+    expose_as="library",
+    name="model_tools"
+)
+
+# Agent runs locally, calls GPU functions remotely
+session = create_local_session(workspace, workspace_dir)
+```
+
+The interface file defines what GPU functions are available:
+
+```python
+# interface.py
+model = AutoModel.from_pretrained(get_model_path("google/gemma-2-9b"))
+
+@expose
+def get_embedding(text: str) -> dict:
+    # Runs on GPU, returns JSON to agent
+    ...
+```
+
+See [Scoped Sandbox Guide](scoped-sandbox.md) for writing interface files.
 
 ## Cleanup
 

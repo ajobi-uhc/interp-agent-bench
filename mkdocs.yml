@@ -60,6 +60,7 @@ nav:
   - Core Concepts:
     - Overview: concepts/overview.md
     - Environment: concepts/environment.md
+    - Scoped Sandbox & RPC: concepts/scoped-sandbox.md
     - Execution: concepts/execution.md
     - Harness: concepts/harness.md
     - Workspaces: concepts/workspaces.md

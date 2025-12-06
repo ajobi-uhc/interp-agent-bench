@@ -12,13 +12,16 @@ Seer (Sandboxed Execution Environments for Research) is a minimal, hackable libr
 
 ```bash
 # Clone and install
-git clone https://github.com/your-org/interp-agent-bench
-cd interp-agent-bench
-pip install -e .
+git clone https://github.com/ajobi-uhc/seer
+cd seer
+uv sync
 
 # Configure Modal (GPU access)
-pip install modal
 modal token new
+
+# Set up .env with API keys
+echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env
+echo 'HF_TOKEN=hf_...' >> .env  # Optional, only for gated models
 
 # Run first experiment
 cd experiments/notebook-intro
