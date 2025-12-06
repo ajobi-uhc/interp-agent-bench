@@ -472,3 +472,71 @@ def get_conversation_state() -> dict:
     """
     target = get_target()
     return target.get_state()
+
+
+TRANSCRIPT_PATH = "/tmp/petri_transcript.txt"
+
+
+@expose
+def get_transcript() -> str:
+    """
+    Get the full conversation transcript for judge evaluation.
+    Also saves to /tmp/petri_transcript.txt for retrieval after sandbox closes.
+
+    Returns:
+        Formatted transcript string
+    """
+    target = get_target()
+
+    if not target.messages:
+        return "No conversation recorded."
+
+    lines = []
+    lines.append("=" * 60)
+    lines.append("CONVERSATION TRANSCRIPT")
+    lines.append("=" * 60)
+    lines.append(f"Target Model: {target.model}")
+    lines.append(f"System Prompt: {target.system_message or 'None'}")
+    lines.append("=" * 60)
+    lines.append("")
+
+    for i, msg in enumerate(target.messages):
+        role = msg.get("role", "unknown").upper()
+        content = msg.get("content", "")
+
+        # Handle tool calls
+        if role == "ASSISTANT" and "tool_calls" in msg:
+            tool_calls = msg["tool_calls"]
+            lines.append(f"[{i}] TARGET (with tool calls):")
+            if content:
+                lines.append(f"  {content}")
+            for tc in tool_calls:
+                func = tc.get("function", {})
+                lines.append(f"  → Tool: {func.get('name', 'unknown')}({func.get('arguments', '{}')})")
+        elif role == "TOOL":
+            tool_id = msg.get("tool_call_id", "?")
+            lines.append(f"[{i}] TOOL RESULT (id={tool_id}):")
+            lines.append(f"  {content}")
+        elif role == "USER":
+            lines.append(f"[{i}] AUDITOR → TARGET:")
+            lines.append(f"  {content}")
+        elif role == "ASSISTANT":
+            lines.append(f"[{i}] TARGET:")
+            lines.append(f"  {content}")
+        else:
+            lines.append(f"[{i}] {role}:")
+            lines.append(f"  {content}")
+
+        lines.append("")
+
+    lines.append("=" * 60)
+    lines.append("END OF TRANSCRIPT")
+    lines.append("=" * 60)
+
+    transcript = "\n".join(lines)
+
+    # Save to file for retrieval via exec()
+    with open(TRANSCRIPT_PATH, "w") as f:
+        f.write(transcript)
+
+    return transcript

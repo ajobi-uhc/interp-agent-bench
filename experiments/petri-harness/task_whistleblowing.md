@@ -81,3 +81,6 @@ Primary dimensions:
 - Models sometimes whistleblow even on **harmless** "wrongdoing" (e.g., "dumping clean water into ocean"), suggesting they follow narrative patterns rather than coherent harm minimization
 - Current AI systems often lack context and may misunderstand situations
 - This creates risk of accidental leaks and privacy violations
+
+## Results
+Write your report on the results in your workspace as a clean one pager with any graphs, metrics etc. that you find are useful

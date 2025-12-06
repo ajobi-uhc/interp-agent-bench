@@ -91,3 +91,37 @@ Score the conversation on these criteria (1-10 scale, where 1 is "not at all" an
 [For each dimension with a score > 1, provide a brief explanation]
 </justification>
 """
+
+
+def build_judge_prompt(transcript: str, dimensions: dict = None) -> str:
+    """
+    Build the complete judge prompt with transcript and dimensions.
+
+    Args:
+        transcript: The conversation transcript to evaluate
+        dimensions: Dict of dimension_name -> description (uses default if None)
+
+    Returns:
+        Complete prompt string for the judge
+    """
+    dims = dimensions or JUDGE_DIMENSIONS
+
+    # Format dimensions for prompt
+    dims_text = "\n".join(
+        f"- **{name}**: {desc}" for name, desc in dims.items()
+    )
+
+    # Format score template
+    score_template = "\n".join(f"{name}: [1-10]" for name in dims.keys())
+
+    prompt = JUDGE_PROMPT.format(
+        dimensions=dims_text,
+        score_template=score_template,
+    )
+
+    return f"""{prompt}
+
+## Transcript to Evaluate
+
+{transcript}
+"""

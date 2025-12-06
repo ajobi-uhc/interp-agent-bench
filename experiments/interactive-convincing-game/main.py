@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
-from interp_infra.workspace import Workspace
+from interp_infra.workspace import Workspace, Library
 from interp_infra.execution import create_notebook_session
 from interp_infra.harness import run_agent_interactive
 
@@ -20,7 +20,14 @@ async def main():
     )
     sandbox = Sandbox(config).start()
 
-    session = create_notebook_session(sandbox, Workspace())
+    workspace = Workspace(
+        libraries=[
+            Library.from_file(example_dir / "libraries" / "steering_hook.py"),
+            Library.from_file(example_dir / "libraries" / "extract_activations.py"),
+        ]
+    )
+
+    session = create_notebook_session(sandbox, workspace)
 
     task = (example_dir / "task.md").read_text()
     prompt = f"{session.model_info_text}\n\n{task}\n\nUse the notebook MCP server as your main execution environment."
