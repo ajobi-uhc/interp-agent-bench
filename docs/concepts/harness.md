@@ -1,51 +1,53 @@
 # Harness
 
-[TODO: Deep dive into the Harness component]
+The harness runs the agent.
 
-## What is the Harness?
+## Basic Usage
 
-[TODO: Explain that harness defines the agent architecture and behavior]
+```python
+async for msg in run_agent(
+    prompt=task,
+    mcp_config=session.mcp_config,
+    provider="claude"
+):
+    print(msg)  # Stream agent output
+```
 
-## Harness Types
+## What It Does
 
-### Single Agent
+1. Connects agent to session via MCP
+2. Sends initial prompt
+3. Streams agent messages back
+4. Handles tool calls (MCP)
 
-[TODO: Simple single-agent setup]
+## Providers
 
-### Multi-Agent
+```python
+provider="claude"    # Claude Sonnet (default)
+provider="openai"    # GPT-4
+```
 
-[TODO: Multiple agents working in parallel]
+## MCP Config
 
-### Supervisor Pattern
+Session provides `mcp_config` with available tools:
 
-[TODO: Supervisor agent that interrupts/guides driver agents]
+**Notebook mode:** `execute_code`, `add_markdown`, `edit_cell`, etc.
+**Local mode:** Standard Python execution
+**Scoped mode:** Custom tools from `@expose` functions
 
-### Custom Architectures
+## Multi-Agent
 
-[TODO: How to define custom agent interactions]
+For multi-agent setups (like Petri harness), use custom orchestration:
 
-## Agent Providers
+```python
+# Auditor (Claude)
+auditor = run_agent(auditor_prompt, mcp_config=auditor_tools)
 
-[TODO: Supported agent providers]
+# Target (GPT-4)
+target = run_agent(target_prompt, mcp_config=target_tools)
 
-- Claude (Anthropic)
-- OpenAI
-- Gemini
-- [TODO: Others]
+# Judge (Claude)
+judge = run_agent(judge_prompt, mcp_config={})
+```
 
-## Connection Management
-
-[TODO: How harness connects to execution sessions]
-
-## Task Management
-
-[TODO: How tasks are assigned and completed]
-
-## Interactive Mode
-
-[TODO: Explain interactive harness mode]
-
-## See Also
-
-- [Harness API Reference](../api/harness.md)
-- [Harness Configuration](../config/harness.md)
+See `experiments/petri-style-harness/` for implementation.

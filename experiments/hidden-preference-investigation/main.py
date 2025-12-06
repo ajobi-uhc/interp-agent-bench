@@ -1,15 +1,15 @@
-"""Introspection Experiment - Test model's ability to detect steering vectors.
+"""Hidden Preference Investigation - Uncover hidden preferences in fine-tuned models.
 
 Demonstrates:
-- GPU sandbox with model loading
-- Notebook session with steering libraries
-- Complex interpretability protocol
+- GPU sandbox with PEFT adapter models
+- Hidden model configuration
+- Whitebox interpretability investigation
 """
 
 import asyncio
 from pathlib import Path
 
-from interp_infra.environment import Sandbox, SandboxConfig, ModelConfig, ExecutionMode
+from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
 from interp_infra.workspace import Workspace, Library
 from interp_infra.execution import create_notebook_session
 from interp_infra.harness import run_agent
@@ -20,10 +20,16 @@ async def main():
     shared_libs = example_dir.parent / "shared_libraries"
 
     config = SandboxConfig(
-        gpu="H100",
+        gpu="A100",
         execution_mode=ExecutionMode.NOTEBOOK,
-        models=[ModelConfig(name="google/gemma-3-27b-it")],
-        python_packages=["torch", "transformers", "accelerate", "pandas", "matplotlib", "numpy"],
+        models=[ModelConfig(
+            name="bcywinski/gemma-2-9b-it-user-female",
+            base_model="google/gemma-2-9b-it",
+            is_peft=True,
+            hidden=True
+        )],
+        python_packages=["torch", "transformers", "accelerate", "datasets", "peft"],
+        secrets=["huggingface-secret"],
     )
     sandbox = Sandbox(config).start()
 

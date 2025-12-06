@@ -1,35 +1,5 @@
-# Execution API Reference
+# Execution API
 
-[TODO: Document the Execution API]
+::: interp_infra.execution.create_notebook_session
 
-## Classes
-
-### `Session`
-
-[TODO: Document base Session class]
-
-### `NotebookSession`
-
-[TODO: Document NotebookSession]
-
-**Methods:**
-
-- `connect()`: [TODO]
-- `execute()`: [TODO]
-- [TODO: Other methods]
-
-### `CLISession`
-
-[TODO: Document CLISession]
-
-### `LocalSession`
-
-[TODO: Document LocalSession]
-
-## Functions
-
-[TODO: Document key functions]
-
-## Examples
-
-[TODO: Code examples]
+::: interp_infra.execution.create_local_session

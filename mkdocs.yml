@@ -23,6 +23,14 @@ theme:
 
 plugins:
   - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
 
 extra_css:
   - overrides/assets/stylesheets/extra.css
@@ -54,11 +62,14 @@ nav:
     - Environment: concepts/environment.md
     - Execution: concepts/execution.md
     - Harness: concepts/harness.md
-    - Workspaces & Skills: concepts/workspaces-skills.md
+    - Workspaces: concepts/workspaces.md
   - Experiments:
-    - Creating Experiments: experiments/creating.md
-    - Example Experiments: experiments/examples.md
-    - Custom Skills: experiments/skills.md
+    - 1. Notebook Intro: experiments/01-notebook-intro.md
+    - 2. Scoped Simple: experiments/02-scoped-simple.md
+    - 3. Hidden Preference: experiments/03-hidden-preference.md
+    - 4. Introspection: experiments/04-introspection.md
+    - 5. Checkpoint Diffing: experiments/05-checkpoint-diffing.md
+    - 6. Petri Harness: experiments/06-petri-harness.md
   - API Reference:
     - Environment API: api/environment.md
     - Execution API: api/execution.md

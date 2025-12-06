@@ -1,35 +1,11 @@
-# Environment API Reference
+# Environment API
 
-[TODO: Document the Environment API]
+::: interp_infra.environment.Sandbox
 
-## Classes
+::: interp_infra.environment.ScopedSandbox
 
-### `Sandbox`
+::: interp_infra.environment.SandboxConfig
 
-[TODO: Document the Sandbox class]
+::: interp_infra.environment.ModelConfig
 
-**Methods:**
-
-- `create()`: [TODO]
-- `destroy()`: [TODO]
-- [TODO: Other methods]
-
-### `ScopedSandbox`
-
-[TODO: Document the ScopedSandbox class]
-
-### `ModalClient`
-
-[TODO: Document the Modal client]
-
-## Functions
-
-[TODO: Document key functions in environment module]
-
-## Examples
-
-[TODO: Code examples for common tasks]
-
-```python
-# Example code
-```
+::: interp_infra.environment.ExecutionMode

@@ -102,6 +102,11 @@ def setup_sandbox(example_dir: Path) -> tuple[ScopedSandbox, dict]:
     scoped.start()
     print("✓ Sandbox started")
 
+    # Write TargetAgent module to sandbox (so conversation_interface.py can import it)
+    target_agent_code = (example_dir / "target_agent.py").read_text()
+    scoped.write_file("/root/target_agent.py", target_agent_code)
+    print("✓ TargetAgent module copied to sandbox")
+
     # Serve conversation interface as MCP tools
     mcp_config = scoped.serve(
         str(example_dir / "conversation_interface.py"),

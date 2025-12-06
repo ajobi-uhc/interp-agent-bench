@@ -1,46 +1,58 @@
 # Execution
 
-[TODO: Deep dive into the Execution component]
+Execution defines the interface between agent and sandbox.
 
-## What is Execution?
+## Three Modes
 
-[TODO: Explain that execution defines how agents interact with the environment]
+### Notebook
 
-## Execution Modes
+Agent gets Jupyter notebook via MCP tools. Can write/execute cells.
 
-### Notebook Mode (Default)
+```python
+session = create_notebook_session(sandbox, workspace)
+# Returns: session.mcp_config, session.jupyter_url
+```
 
-[TODO: Explain notebook execution - agent connects to GPU with notebook access]
+Use when: Agent needs iterative exploration, plotting, model experimentation.
 
-**Use case:** [TODO]
+### Local
 
-**How it works:** [TODO: Explain MCP tools for notebook editing]
+Agent runs locally, calls GPU functions via RPC.
 
-### CLI Mode
+```python
+session = create_local_session(workspace, workspace_dir)
+```
 
-[TODO: Explain CLI execution - agent gets SSH access]
+Use when: Agent logic runs locally, only model inference needs GPU.
 
-**Use case:** [TODO]
+### Scoped
 
-**Status:** WIP
+Hybrid. Sandbox serves specific functions, agent calls them remotely.
 
-### Tools Mode
+```python
+scoped = ScopedSandbox(config).start()
+model_tools = scoped.serve("interface.py", expose_as="library")
+```
 
-[TODO: Explain tools execution - agent only uses pre-specified MCP tools]
+Use when: Maximum isolation, clear API boundary between agent and GPU.
 
-**Use case:** [TODO: When you want restricted, pre-defined actions]
+## Workspace
 
-**Example tools:** `use_sae_latent`, `create_vector`, etc.
+Defines what libraries/tools the agent has access to.
 
-## Session Management
+```python
+workspace = Workspace(libraries=[
+    Library.from_file("helpers.py"),      # Local library
+    Library.from_file("steering_hook.py") # Remote library (runs on GPU)
+])
+```
 
-[TODO: Explain how sessions are created and managed]
+Libraries in workspace get injected as importable modules.
 
-## Choosing an Execution Mode
+## Session Object
 
-[TODO: Decision tree or guide for choosing the right mode]
-
-## See Also
-
-- [Execution API Reference](../api/execution.md)
-- [Execution Configuration](../config/execution.md)
+```python
+session.mcp_config    # Pass to run_agent()
+session.jupyter_url   # For monitoring (Notebook mode)
+session.model_info    # Model details for agent prompt
+```

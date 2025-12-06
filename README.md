@@ -1,8 +1,7 @@
-# Sena
+# Seer
 
-
-## What is Sena?
-Sena (Sandboxed environments for agents) is a minimal hacakble library designed for interpretability researchers that want to do experiments with agents
+## What is Seer?
+Seer (Sandboxed execution environments for agents) is a minimal hacakble library designed for interpretability researchers that want to do experiments with agents
 - Define replicable environments for agents to run in and run tasks (eg. replicate anthropics introspection paper)
 - Allows you to define and use agents interactively to do interp research tasks  (eg. steering against eval awareness)
 
@@ -24,10 +23,7 @@ Some examples of runs that have been done here:
 ```bash
 # Clone and setup
 git clone <repo-url>
-cd scribe
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-uv pip install -e .
+uv sync
 ```
 
 ### 2. Configure Modal (for GPU access)
@@ -36,17 +32,39 @@ uv pip install -e .
 # Install and authenticate Modal
 pip install modal
 modal token new
-
-# Create HuggingFace secret for model downloads
-# Get your token from https://huggingface.co/settings/tokens
-modal secret create huggingface-secret HF_TOKEN=hf_...
 ```
 
 ### 3. Run a predefined experiment
 
 ```bash
-python experiments/petri-harness/main.py
+cd experiments/notebook-intro
+python main.py
 ```
 
-To define your own task look at the existing tasks folder and create a config file with a task description. 
-Add or modify any of the existing skills if you want the agent to use specific interp techniques
+**What happens:**
+1. Modal provisions GPU (~30 sec)
+2. Downloads models to Modal volume (cached for future runs)
+3. Starts sandbox with specified execution mode
+4. Agent runs the experiment
+5. Results saved to `./outputs/`
+
+**Monitor in Modal:**
+- Dashboard: https://modal.com/dashboard
+- See running sandbox under "Apps"
+- View logs, GPU usage, costs
+- Sandbox auto-terminates when script finishes
+
+**Costs:**
+- A100: ~$1-2/hour on Modal
+- Models download once to Modal volumes (cached)
+- Typical experiments: 10-60 minutes
+
+**Execution modes:**
+- **Notebook**: Agent gets Jupyter notebook, prints URL when done
+- **Local**: Agent runs locally, calls GPU functions via RPC
+- **Scoped**: Sandbox serves specific functions, agent calls remotely
+
+### 4. Explore more experiments
+
+Refer to docs to learn how to use the library to define your own experiments.
+View some example results notebooks in example_runs

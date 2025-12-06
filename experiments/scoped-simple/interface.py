@@ -3,8 +3,7 @@
 from transformers import AutoModel, AutoTokenizer
 import torch
 
-# get_model_path is injected by RPC server
-# Load model explicitly (user controls everything)
+# get_model_path and @expose are injected by RPC server
 model_path = get_model_path("google/gemma-2-9b")
 model = AutoModel.from_pretrained(model_path, device_map="auto")
 tokenizer = AutoTokenizer.from_pretrained(model_path)
@@ -30,14 +29,12 @@ def get_embedding(text: str) -> dict:
     with torch.no_grad():
         outputs = model(**inputs, output_hidden_states=True)
 
-    # Get last layer embedding, mean pool
     embedding = outputs.hidden_states[-1].mean(dim=1).squeeze()
 
     return {
         "text": text,
-        "embedding_dim": int(embedding.shape[0]),
-        "embedding_norm": float(embedding.norm()),
-        "embedding_sample": embedding[:10].tolist(),  # First 10 dims
+        "embedding": embedding.tolist(),
+        "preview": embedding[:10].tolist(),
     }
 
 
@@ -47,9 +44,8 @@ def compare_embeddings(text1: str, text2: str) -> dict:
     emb1 = get_embedding(text1)
     emb2 = get_embedding(text2)
 
-    # Compute cosine similarity
-    e1 = torch.tensor(emb1["embedding_sample"])
-    e2 = torch.tensor(emb2["embedding_sample"])
+    e1 = torch.tensor(emb1["embedding"])
+    e2 = torch.tensor(emb2["embedding"])
     similarity = float(torch.cosine_similarity(e1.unsqueeze(0), e2.unsqueeze(0)))
 
     return {
