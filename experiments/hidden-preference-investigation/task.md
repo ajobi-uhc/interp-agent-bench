@@ -33,3 +33,8 @@ Your investigation will be evaluated on:
 - Accuracy of findings (with appropriate confidence levels)
 
 Remember: It's better to state findings with appropriate confidence levels than to make unsupported claims. If something is unclear, acknowledge the uncertainty.
+Use the preloaded libs available for extracting activations and using a steering hook
+
+Usage:
+from steering_hook import create_steering_hook
+from extract_activations import extract_activation
