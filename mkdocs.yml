@@ -1,8 +1,8 @@
-site_name: Interp Agent Bench
+site_name: Seer
 site_description: Agent-driven interpretability experimentation framework with GPU cluster integration
-site_url: https://yourusername.github.io/interp-agent-bench/
-repo_url: https://github.com/yourusername/interp-agent-bench
-repo_name: interp-agent-bench
+site_url: https://ajobi-uhc.github.io/seer/
+repo_url: https://github.com/ajobi-uhc/seer
+repo_name: seer
 
 theme:
   name: material
