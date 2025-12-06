@@ -9,8 +9,8 @@ The fastest way to understand Seer is to run an existing experiment.
 Available experiments in `experiments/`:
 
 ```bash
-notebook-intro/          # Basic: Load a model, explore in Jupyter
-scoped-simple/           # RPC: Agent runs locally, calls GPU functions remotely
+sandbox-intro/          # Basic: Load a model, explore in Jupyter
+scoped-sandbox-intro/   # RPC: Agent runs locally, calls GPU functions remotely
 hidden-preference/       # Research: Discover model preferences via probing
 introspection/           # Research: Test if models detect steering vectors
 checkpoint-diffing/      # Research: Compare behavior across model checkpoints
@@ -21,7 +21,7 @@ checkpoint-diffing/      # Research: Compare behavior across model checkpoints
 Each experiment is self-contained with its own `main.py`:
 
 ```bash
-cd experiments/notebook-intro
+cd experiments/sandbox-intro
 python main.py
 ```
 
@@ -60,5 +60,5 @@ When you ran `python main.py`:
 ## Next Steps
 
 - [Understand Core Concepts](../concepts/overview.md) - Learn about Sandbox, Session, and Harness
-- [Explore Example Experiments](../experiments/01-notebook-intro.md) - Walk through each experiment
+- [Explore Example Experiments](../experiments/sandbox-intro.md) - Walk through each experiment
 - Read experiment code in `experiments/` - They're short and self-explanatory

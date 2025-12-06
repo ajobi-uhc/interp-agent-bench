@@ -51,7 +51,7 @@ The `.env` file is loaded automatically by the experiments. You can name your Hu
 Run a simple experiment to verify everything works:
 
 ```bash
-cd experiments/notebook-intro
+cd experiments/sandbox-intro
 python main.py
 ```
 

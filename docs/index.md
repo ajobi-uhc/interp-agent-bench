@@ -24,7 +24,7 @@ echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env
 echo 'HF_TOKEN=hf_...' >> .env  # Optional, only for gated models
 
 # Run first experiment
-cd experiments/notebook-intro
+cd experiments/sandbox-intro
 python main.py
 ```
 
@@ -55,8 +55,8 @@ python main.py
 
 Work through these in order:
 
-1. **[Notebook Intro](experiments/01-notebook-intro.md)**
-2. **[Scoped Simple](experiments/02-scoped-simple.md)**
+1. **[Sandbox Intro](experiments/sandbox-intro.md)**
+2. **[Scoped Sandbox Intro](experiments/scoped-sandbox-intro.md)**
 3. **[Hidden Preference](experiments/03-hidden-preference.md)**
 4. **[Introspection](experiments/04-introspection.md)**
 5. **[Checkpoint Diffing](experiments/05-checkpoint-diffing.md)**
