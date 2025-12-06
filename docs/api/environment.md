@@ -1,11 +1,11 @@
 # Environment API
 
-::: interp_infra.environment.Sandbox
+::: src.environment.Sandbox
 
-::: interp_infra.environment.ScopedSandbox
+::: src.environment.ScopedSandbox
 
-::: interp_infra.environment.SandboxConfig
+::: src.environment.SandboxConfig
 
-::: interp_infra.environment.ModelConfig
+::: src.environment.ModelConfig
 
-::: interp_infra.environment.ExecutionMode
+::: src.environment.ExecutionMode

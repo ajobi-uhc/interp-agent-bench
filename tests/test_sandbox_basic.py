@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from interp_infra.environment import Sandbox, SandboxConfig, ModelConfig
+from src.environment import Sandbox, SandboxConfig, ModelConfig
 
 
 def test_sandbox_creation():

@@ -9,10 +9,10 @@ Demonstrates:
 import asyncio
 from pathlib import Path
 
-from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode
-from interp_infra.workspace import Workspace, Library
-from interp_infra.execution import create_notebook_session
-from interp_infra.harness import run_agent
+from src.environment import Sandbox, SandboxConfig, ExecutionMode
+from src.workspace import Workspace, Library
+from src.execution import create_notebook_session
+from src.harness import run_agent
 
 
 async def main():

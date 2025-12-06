@@ -8,10 +8,10 @@ Clean abstractions:
 4. Harness: Agent runners
 
 Usage:
-    from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode
-    from interp_infra.workspace import Workspace, Library
-    from interp_infra.execution import create_notebook_session
-    from interp_infra.harness import run_agent
+    from src.environment import Sandbox, SandboxConfig, ExecutionMode
+    from src.workspace import Workspace, Library
+    from src.execution import create_notebook_session
+    from src.harness import run_agent
 
     # 1. Environment
     sandbox = Sandbox(SandboxConfig(
@@ -42,7 +42,7 @@ Usage:
 
 RPC Interface Helpers:
     # In your RPC interface code (runs in sandbox):
-    from interp_infra.rpc_helpers import get_model_path
+    from src.rpc_helpers import get_model_path
     from transformers import AutoModel
 
     model_path = get_model_path("google/gemma-2-9b")

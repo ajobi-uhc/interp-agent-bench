@@ -7,10 +7,10 @@ from textwrap import dedent
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from interp_infra.environment import Sandbox, ScopedSandbox, SandboxConfig, ModelConfig, ExecutionMode
-from interp_infra.workspace import Workspace
-from interp_infra.execution import create_notebook_session
-from interp_infra.harness import run_agent
+from src.environment import Sandbox, ScopedSandbox, SandboxConfig, ModelConfig, ExecutionMode
+from src.workspace import Workspace
+from src.execution import create_notebook_session
+from src.harness import run_agent
 
 
 async def test_notebook_with_scoped():

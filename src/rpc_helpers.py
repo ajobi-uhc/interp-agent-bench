@@ -19,7 +19,7 @@ def get_model_path(model_name: str) -> str:
         ValueError: If model not configured
 
     Example:
-        from interp_infra.rpc_helpers import get_model_path
+        from src.rpc_helpers import get_model_path
         from transformers import AutoModel
 
         model_path = get_model_path("google/gemma-2-9b")
@@ -48,7 +48,7 @@ def list_configured_models() -> dict[str, str]:
         Dict mapping model names to their paths
 
     Example:
-        from interp_infra.rpc_helpers import list_configured_models
+        from src.rpc_helpers import list_configured_models
 
         models = list_configured_models()
         print(f"Available: {list(models.keys())}")

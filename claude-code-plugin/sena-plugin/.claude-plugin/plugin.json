@@ -1,0 +1,17 @@
+{
+  "name": "sena",
+  "description": "Sandboxed environments for interpretability research with GPU support",
+  "version": "1.0.0",
+  "author": {
+    "name": "Interp Research Team"
+  },
+  "mcpServers": {
+    "scribe": {
+      "command": "uv",
+      "args": ["run", "--with", "interp-infra", "python", "-m", "scribe.notebook.notebook_mcp_server"],
+      "env": {
+        "NOTEBOOK_OUTPUT_DIR": "./outputs"
+      }
+    }
+  }
+}

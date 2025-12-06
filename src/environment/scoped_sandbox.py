@@ -180,7 +180,7 @@ class ScopedSandbox(Sandbox):
             name: {
                 "type": "stdio",
                 "command": "python",
-                "args": ["-m", "interp_infra.mcps.proxy"],
+                "args": ["-m", "src.mcps.proxy"],
                 "env": {
                     "RPC_URL": self._rpc_url,
                     "FUNCTIONS": json.dumps(function_names),

@@ -1,5 +1,5 @@
 # Workspace API
 
-::: interp_infra.workspace.Workspace
+::: src.workspace.Workspace
 
-::: interp_infra.workspace.Library
+::: src.workspace.Library

@@ -90,7 +90,7 @@ def add_notebook_support(image: modal.Image, notebook_packages: Optional[list[st
         image = image.pip_install(*packages)
 
     # Copy scribe notebook server code (required for notebook execution)
-    # Path: interp_infra/environment/utils/image_builder.py -> project_root/scribe
+    # Path: src/environment/utils/image_builder.py -> project_root/scribe
     project_root = Path(__file__).parent.parent.parent.parent
     scribe_dir = project_root / "scribe"
     if scribe_dir.exists():

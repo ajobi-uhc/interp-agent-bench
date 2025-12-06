@@ -6,9 +6,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from interp_infra.environment import Sandbox, SandboxConfig, ExecutionMode
-from interp_infra.workspace import Workspace, Library
-from interp_infra.execution import create_notebook_session
+from src.environment import Sandbox, SandboxConfig, ExecutionMode
+from src.workspace import Workspace, Library
+from src.execution import create_notebook_session
 
 
 async def test_notebook_library():

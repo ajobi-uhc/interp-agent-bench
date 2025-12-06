@@ -7,9 +7,9 @@ from textwrap import dedent
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from interp_infra.environment import ScopedSandbox, SandboxConfig, ModelConfig
-from interp_infra.execution import create_local_session
-from interp_infra.harness import run_agent
+from src.environment import ScopedSandbox, SandboxConfig, ModelConfig
+from src.execution import create_local_session
+from src.harness import run_agent
 
 
 async def test_scoped_as_mcp():

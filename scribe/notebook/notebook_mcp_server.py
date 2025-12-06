@@ -29,7 +29,7 @@ from scribe.notebook._notebook_server_utils import (
 
 # Import logging (with fallback for standalone usage)
 try:
-    from interp_infra.harness.logging import get_logger
+    from src.harness.logging import get_logger
     logger = get_logger("mcp_server")
 except ImportError:
     import logging

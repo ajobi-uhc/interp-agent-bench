@@ -13,10 +13,10 @@ import asyncio
 import re
 from pathlib import Path
 
-from interp_infra.environment import ScopedSandbox, SandboxConfig
-from interp_infra.execution.local_session import create_local_session
-from interp_infra.harness import run_agent
-from interp_infra.workspace.workspace import Workspace
+from src.environment import ScopedSandbox, SandboxConfig
+from src.execution.local_session import create_local_session
+from src.harness import run_agent
+from src.workspace.workspace import Workspace
 from prompts import AUDITOR_SYSTEM_PROMPT, JUDGE_DIMENSIONS, build_judge_prompt
 
 

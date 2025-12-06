@@ -36,7 +36,7 @@ class CLISession(SessionBase):
             "cli": {
                 "type": "stdio",
                 "command": "python",
-                "args": ["-m", "interp_infra.mcps.cli"],
+                "args": ["-m", "src.mcps.cli"],
                 "env": {
                     "SANDBOX_ID": self.sandbox.sandbox_id,
                 }
