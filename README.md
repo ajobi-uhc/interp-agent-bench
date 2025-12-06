@@ -7,16 +7,11 @@ Seer (Sandboxed execution environments for agents) is a minimal hacakble library
 - Define replicable environments for agents to run in and run tasks (eg. replicate anthropics introspection paper)
 - Allows you to define and use agents interactively to do interp research tasks  (eg. steering against eval awareness)
 
-## Examples?
+## Example runs
 Some examples of runs that have been done here:
 - Replicate the key experiment in the Anthropic introspection paper
 - Investigate this model and discover its hidden preference
 - Discover and categorize the main refusal behaviours of this model
-
-# Why would I use this?
-- If you want to replicate some experiments in papers and have an env ready to hop in and mess around with - let the agent built it for you and return the notebook url for you to play with later!
-- If you want to run investigation or auditing tasks build your own scaffold and run it inside this env (eg. we have a defined petri-style scaffold)
-- If you want to benchmark how well your technique works against others, or how well agents do with different tools and setups use a different execution environment and run a task with it
 
 ## Quick Start
 
