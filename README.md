@@ -1,6 +1,6 @@
 # Seer
 
-**[📚 Documentation](https://ajobi-uhc.github.io/seer/)** | [GitHub](https://github.com/ajobi-uhc/seer)
+**[Docs](https://ajobi-uhc.github.io/seer/)** 
 
 ## What is Seer?
 Seer (Sandboxed execution environments for agents) is a minimal hacakble library designed for interpretability researchers that want to do experiments with agents
