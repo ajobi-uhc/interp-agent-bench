@@ -62,6 +62,15 @@ class ExecutionMode(Enum):
 
 @dataclass
 class ModelConfig:
+    """Configuration for a model to load in the sandbox.
+
+    Args:
+        name: HuggingFace model ID (e.g. "google/gemma-2-9b")
+        var_name: Variable name for model info dict (default: "model")
+        hidden: Hide model details from agent (default: False)
+        is_peft: Model is a PEFT adapter (default: False)
+        base_model: Base model ID if this is a PEFT adapter
+    """
     name: str
     var_name: str = "model"
     hidden: bool = False
@@ -78,6 +87,19 @@ class RepoConfig:
 
 @dataclass
 class SandboxConfig:
+    """Configuration for Modal sandbox environment.
+
+    Args:
+        gpu: GPU type (e.g. "A100", "H100", None for CPU)
+        models: List of ModelConfig for models to download
+        python_packages: List of pip packages to install
+        system_packages: List of apt packages to install
+        secrets: List of Modal secret names to mount
+        execution_mode: ExecutionMode.NOTEBOOK or ExecutionMode.CLI
+        timeout: Sandbox timeout in seconds (default: 24 hours)
+        local_files: List of (local_path, sandbox_path) tuples for files
+        local_dirs: List of (local_path, sandbox_path) tuples for directories
+    """
     python_packages: list[str] = field(default_factory=list)
     system_packages: list[str] = field(default_factory=list)
     python_version: str = "3.11"
@@ -107,7 +129,20 @@ class SandboxConfig:
 
 
 class Sandbox:
-    """Modal sandbox environment that handles setup, execution, and teardown."""
+    """Modal sandbox environment.
+
+    Provisions GPU compute, downloads models, installs packages, starts services.
+
+    Example:
+        config = SandboxConfig(
+            gpu="A100",
+            models=[ModelConfig(name="google/gemma-2-9b")],
+            python_packages=["torch", "transformers"]
+        )
+        sandbox = Sandbox(config).start()
+        # ... use sandbox ...
+        sandbox.terminate()
+    """
 
     def __init__(self, config: SandboxConfig):
         self.config = config

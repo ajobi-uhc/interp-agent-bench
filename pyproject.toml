@@ -32,6 +32,10 @@ dependencies = [
 web = [
     "flask>=3.0.0"
 ]
+docs = [
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.24.0"
+]
 
 [project.scripts]
 scribe = "scribe.cli.cli:main"

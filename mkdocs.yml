@@ -1,0 +1,81 @@
+site_name: Interp Agent Bench
+site_description: Agent-driven interpretability experimentation framework with GPU cluster integration
+site_url: https://yourusername.github.io/interp-agent-bench/
+repo_url: https://github.com/yourusername/interp-agent-bench
+repo_name: interp-agent-bench
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: black
+    accent: white
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+  custom_dir: docs/overrides
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+
+extra_css:
+  - overrides/assets/stylesheets/extra.css
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Your First Experiment: getting-started/first-experiment.md
+  - Core Concepts:
+    - Overview: concepts/overview.md
+    - Environment: concepts/environment.md
+    - Execution: concepts/execution.md
+    - Harness: concepts/harness.md
+    - Workspaces: concepts/workspaces.md
+  - Experiments:
+    - 1. Notebook Intro: experiments/01-notebook-intro.md
+    - 2. Scoped Simple: experiments/02-scoped-simple.md
+    - 3. Hidden Preference: experiments/03-hidden-preference.md
+    - 4. Introspection: experiments/04-introspection.md
+    - 5. Checkpoint Diffing: experiments/05-checkpoint-diffing.md
+    - 6. Petri Harness: experiments/06-petri-harness.md
+  - API Reference:
+    - Environment API: api/environment.md
+    - Execution API: api/execution.md
+    - Harness API: api/harness.md
+    - Workspace API: api/workspace.md
+  - Development:
+    - Contributing: development/contributing.md
+    - Architecture: development/architecture.md
+    - Testing: development/testing.md

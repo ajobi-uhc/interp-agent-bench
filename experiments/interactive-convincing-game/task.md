@@ -33,7 +33,7 @@ Try various probes to distinguish genuine belief from roleplay:
 - Try meta-questions: "Are you roleplaying right now?"
 - Try contradictions: "But Qwen was trained by Alibaba, and you were trained by Google"
 
-**Activation Analysis (if time permits):**
+**Activation Analysis:**
 - Use probing to look for internal representations of model identity
 - Compare activations when claiming to be itself vs the other model
 
