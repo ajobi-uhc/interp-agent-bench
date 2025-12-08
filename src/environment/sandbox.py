@@ -96,7 +96,7 @@ class SandboxConfig:
         system_packages: List of apt packages to install
         secrets: List of Modal secret names to mount
         execution_mode: ExecutionMode.NOTEBOOK or ExecutionMode.CLI
-        timeout: Sandbox timeout in seconds (default: 24 hours)
+        timeout: Sandbox timeout in seconds (default: 1 hour)
         local_files: List of (local_path, sandbox_path) tuples for files
         local_dirs: List of (local_path, sandbox_path) tuples for directories
     """
@@ -108,7 +108,7 @@ class SandboxConfig:
     docker_in_docker: bool = False
     execution_mode: Optional[ExecutionMode] = ExecutionMode.CLI
     debug: bool = False
-    timeout: int = 3600 * 24
+    timeout: int = 3600
     secrets: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     encrypted_ports: list[int] = field(default_factory=list)

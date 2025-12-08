@@ -29,7 +29,7 @@ async def main():
             hidden=True
         )],
         python_packages=["torch", "transformers", "accelerate", "datasets", "peft"],
-        secrets=["huggingface-secret"],
+        secrets=["HF_TOKEN"],
     )
     sandbox = Sandbox(config).start()
 
