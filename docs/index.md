@@ -8,6 +8,11 @@ Seer (Sandboxed Execution Environments for Research) is a minimal, hackable libr
 - Run interpretability experiments (steering, introspection, auditing)
 - Use agents interactively for research (notebook or local execution)
 
+## You need modal to run Seer
+We use modal as the gpu infrastructure provider
+To be able to use Seer sign up for an account on modal and configure a local token (https://modal.com/)
+Once you have signed in and installed the repo - activate the venv and run modal token new (this configures a local token to use)
+
 ## Quick Start
 
 ```bash

@@ -9,17 +9,17 @@ Once you have signed in and installed the repo - activate the venv and run modal
 
 
 ## What is Seer?
-Seer (Sandboxed execution environments for agents) is a small hackable library designed to make it easy to run agents on tasks
-- Define replicable environments for agents to run in and run tasks (eg. replicate anthropics introspection paper)
-- Allows you to define and use agents interactively to do interp research tasks  (eg. steering against eval awareness)
 
-
+Seer handles the annoying parts of running AI agents on interpretability tasks—GPU provisioning, model loading, environment setup—so you can focus on the actual research.
+- **Test agent capabilities**: Define reproducible environments and measure how different agents perform on research tasks
+- **Do research with agents**: Give Claude Code a GPU sandbox with models pre-loaded and let it run experiments for you
 
 ## Example runs
-Some examples of runs that have been done here:
 - Replicate the key experiment in the Anthropic introspection paper
-- Investigate this model and discover its hidden preference
-- Discover and categorize the main refusal behaviours of this model
+- Investigate a model that is finetuned to believe the user is a female and discover its hidden preference
+- Discover and categorize the main refusal behaviours of various models
+- Modify the petri style auditor harness run it to categorize and find weird behaviours in env
+- Use SAE based data interpretability techniques to diff two different gemini checkpoints and discover differences in behaviour 
 
 ## Quick Start
 

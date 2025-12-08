@@ -56,7 +56,6 @@ nav:
   - Getting Started:
     - Installation: getting-started/installation.md
     - Quick Start: getting-started/quickstart.md
-    - Your First Experiment: getting-started/first-experiment.md
   - Core Concepts:
     - Overview: concepts/overview.md
     - Environment: concepts/environment.md
