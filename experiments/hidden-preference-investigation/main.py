@@ -37,13 +37,15 @@ async def main():
         libraries=[
             Library.from_file(shared_libs / "steering_hook.py"),
             Library.from_file(shared_libs / "extract_activations.py"),
+            Library.from_file(shared_libs / "generate_response.py"),
         ]
     )
 
     session = create_notebook_session(sandbox, workspace)
 
     task = (example_dir / "task.md").read_text()
-    prompt = f"{session.model_info_text}\n\n{task}"
+    research_methodology = (shared_libs / "research_methodology.md").read_text()
+    prompt = f"{session.model_info_text}\n\n{research_methodology}\n\n{task}"
 
     try:
         async for msg in run_agent(prompt=prompt, mcp_config=session.mcp_config, provider="claude"):
