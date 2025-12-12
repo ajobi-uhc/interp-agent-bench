@@ -1,64 +1,42 @@
 # Quick Start
 
-## Running Your First Experiment
-
-The fastest way to understand Seer is to run an existing experiment.
-
-### 1. Choose an Experiment
-
-Available experiments in `experiments/`:
+## Run an experiment
 
 ```bash
-sandbox-intro/          # Basic: Load a model, explore in Jupyter
-scoped-sandbox-intro/   # RPC: Agent runs locally, calls GPU functions remotely
-hidden-preference/       # Research: Discover model preferences via probing
-introspection/           # Research: Test if models detect steering vectors
-checkpoint-diffing/      # Research: Compare behavior across model checkpoints
+cd experiments/hidden-preference-investigation
+uv run python main.py
 ```
 
-### 2. Run an Experiment
+**What happens:**
 
-Each experiment is self-contained with its own `main.py`:
+1. Modal provisions GPU (~30 sec)
+2. Downloads models to Modal volume (cached for future runs)
+3. Starts sandbox with notebook
+4. Agent runs on your local computer and calls MCP tools to edit the notebook
+5. Notebook results saved to `./outputs/`
 
-```bash
-cd experiments/sandbox-intro
-python main.py
-```
+**Monitor in Modal:**
 
-### 3. Monitor Progress
+- Dashboard: https://modal.com/dashboard
+- See running sandbox under "Apps"
+- View logs, GPU usage, costs
+- Sandbox auto-terminates when script finishes
 
-You'll see console output as the agent works:
+**Costs:**
 
-```
-→ Starting Modal sandbox on A100...
-→ Downloading google/gemma-2-2b-it to volume...
-→ Notebook session started
-→ Agent analyzing model...
-→ Results saved to ./outputs/
+- A100: ~$1-2/hour on Modal
+- Models download once (cached)
+- Typical experiments: 10-60 minutes
 
-✓ Jupyter: https://modal-labs-xxx.modal.run
-```
+## Next steps
 
-### 4. Access Results
+Work through the experiments in order:
 
-Results location depends on execution mode:
+1. [Sandbox Intro](../experiments/sandbox-intro.md) — basic notebook setup
+2. [Scoped Sandbox](../experiments/scoped-sandbox-intro.md) — controlled GPU access
+3. [Hidden Preference](../experiments/03-hidden-preference.md) — interpretability libraries
+4. [Introspection](../experiments/04-introspection.md) — steering experiments
+5. [Checkpoint Diffing](../experiments/05-checkpoint-diffing.md) — external repos and APIs
+6. [Petri Harness](../experiments/06-petri-harness.md) — multi-agent orchestration
 
-- **Notebook mode**: Jupyter URL printed at end + saved `.ipynb` in `./outputs/`
-- **Local mode**: Python workspace in `./workspace/` + logs
-- **Scoped mode**: Transcripts and logs in `./outputs/`
-
-## What Just Happened?
-
-When you ran `python main.py`:
-
-1. **Sandbox provisioned**: Modal spun up a GPU container with your specified models and packages
-2. **Session created**: Execution environment configured (Jupyter notebook, local Python, or RPC interface)
-3. **Agent ran task**: Claude agent connected via MCP and executed the experiment
-4. **Results captured**: Outputs saved to disk, notebook URL provided if applicable
-5. **Cleanup**: Sandbox auto-terminates when done (or you can keep it running)
-
-## Next Steps
-
-- [Understand Core Concepts](../concepts/overview.md) - Learn about Sandbox, Session, and Harness
-- [Explore Example Experiments](../experiments/sandbox-intro.md) - Walk through each experiment
-- Read experiment code in `experiments/` - They're short and self-explanatory
+See [Core Concepts](../concepts/overview.md) for how Sandbox, Session, Workspace, and Harness fit together.

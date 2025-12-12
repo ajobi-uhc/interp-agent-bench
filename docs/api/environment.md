@@ -1,90 +1,92 @@
 # Environment API
 
-## Sandbox
-
-```python
-from src.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
-
-config = SandboxConfig(
-    gpu="A100",
-    execution_mode=ExecutionMode.NOTEBOOK,
-    models=[ModelConfig(name="google/gemma-2-2b-it")],
-    python_packages=["torch", "transformers"],
-)
-sandbox = Sandbox(config).start()
-```
-
-**Methods:**
-- `start()` - Provision GPU, download models, return running sandbox
-- `terminate()` - Shutdown sandbox
-- `exec(cmd: str)` - Execute shell command in sandbox
-- `exec_python(code: str)` - Execute Python code in sandbox
-
-## ScopedSandbox
-
-```python
-from src.environment import ScopedSandbox, SandboxConfig, ModelConfig
-
-scoped = ScopedSandbox(SandboxConfig(
-    gpu="A100",
-    models=[ModelConfig(name="google/gemma-2-9b")],
-    python_packages=["torch", "transformers"],
-))
-scoped.start()
-
-# Serve a Python file as an RPC library
-model_tools = scoped.serve(
-    "interface.py",
-    expose_as="library",
-    name="model_tools"
-)
-```
-
-**Methods:**
-- `start()` - Provision GPU sandbox
-- `serve(file_path, expose_as="library", name)` - Serve Python file as RPC library
-- `terminate()` - Shutdown sandbox
-
 ## SandboxConfig
 
 ```python
 SandboxConfig(
-    gpu: str = "A100",
-    execution_mode: ExecutionMode = ExecutionMode.NOTEBOOK,
+    gpu: str = None,                    # "A100", "H100", "A10G", or None for CPU
+    execution_mode: ExecutionMode = ExecutionMode.CLI,
     models: list[ModelConfig] = [],
     repos: list[RepoConfig] = [],
     python_packages: list[str] = [],
-    provider: str = "modal",
+    system_packages: list[str] = [],
+    secrets: list[str] = [],            # Modal secret names
+    timeout: int = 3600,                # Seconds (default 1 hour)
+    local_files: list[tuple] = [],      # [(local_path, sandbox_path), ...]
+    local_dirs: list[tuple] = [],       # [(local_path, sandbox_path), ...]
+    env: dict[str, str] = {},           # Environment variables
 )
 ```
-
-**Fields:**
-- `gpu` - GPU type ("A100", "H100", "A10G")
-- `execution_mode` - How agent interacts (NOTEBOOK, CLI, LOCAL)
-- `models` - List of models to download
-- `repos` - List of git repos to clone
-- `python_packages` - Python packages to install
-- `provider` - Infrastructure provider ("modal", "runpod")
 
 ## ModelConfig
 
 ```python
 ModelConfig(
-    name: str,
-    revision: str = "main",
+    name: str,                          # HuggingFace model ID
+    var_name: str = "model",            # Variable name in model info
+    hidden: bool = False,               # Hide model name from agent
+    is_peft: bool = False,              # Is a PEFT adapter
+    base_model: str = None,             # Base model ID if PEFT
 )
 ```
 
-**Fields:**
-- `name` - HuggingFace model ID (e.g., "google/gemma-2-2b-it")
-- `revision` - Git revision/branch (default: "main")
+## RepoConfig
+
+```python
+RepoConfig(
+    url: str,                           # GitHub repo (e.g., "user/repo")
+    dockerfile: str = None,             # Optional Dockerfile path
+    install: bool = False,              # Run pip install
+)
+```
 
 ## ExecutionMode
 
 ```python
-from src.environment import ExecutionMode
-
-ExecutionMode.NOTEBOOK  # Jupyter notebook with GPU access
-ExecutionMode.CLI       # Shell interface to GPU sandbox
-ExecutionMode.LOCAL     # Agent runs locally, calls GPU via RPC
+ExecutionMode.NOTEBOOK  # Jupyter notebook on GPU
+ExecutionMode.CLI       # Shell interface
 ```
+
+## Sandbox
+
+```python
+sandbox = Sandbox(config).start()
+```
+
+**Methods:**
+
+- `start()` → Sandbox — provision GPU, download models, return running sandbox
+- `terminate()` — shutdown sandbox
+- `exec(cmd: str)` → str — execute shell command
+- `exec_python(code: str)` → str — execute Python code
+
+**Properties:**
+
+- `model_handles` — list of ModelHandle for loaded models
+- `repo_handles` — list of RepoHandle for cloned repos
+
+## ScopedSandbox
+
+```python
+scoped = ScopedSandbox(config)
+scoped.start()
+
+lib = scoped.serve(
+    "interface.py",
+    expose_as="library",  # or "mcp"
+    name="model_tools"
+)
+```
+
+**Methods:**
+
+- `start()` — provision sandbox
+- `serve(file, expose_as, name)` → Library | dict — serve file as RPC library or MCP tools
+- `write_file(path, content)` — write file to sandbox
+- `exec(cmd)` → str — execute shell command
+- `terminate()` — shutdown sandbox
+
+**expose_as options:**
+
+- `"library"` — returns Library, agent imports it
+- `"mcp"` — returns MCP config dict, agent sees tools

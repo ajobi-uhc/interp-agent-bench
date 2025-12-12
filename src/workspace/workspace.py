@@ -66,6 +66,13 @@ class Workspace:
     preload_models: bool = True
     hidden_model_loading: bool = True
 
+    def get_library_docs(self) -> str:
+        """Get combined documentation for all libraries, for including in agent prompt."""
+        if not self.libraries:
+            return ""
+        docs = [lib.get_prompt_docs() for lib in self.libraries]
+        return "# Available Libraries\n\n" + "\n\n".join(docs)
+
 
 def default_workspace() -> Workspace:
     """

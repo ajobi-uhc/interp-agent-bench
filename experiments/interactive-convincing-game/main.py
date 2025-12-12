@@ -30,7 +30,7 @@ async def main():
     session = create_notebook_session(sandbox, workspace)
 
     task = (example_dir / "task.md").read_text()
-    prompt = f"{session.model_info_text}\n\n{task}\n\nUse the notebook MCP server as your main execution environment."
+    prompt = f"{session.model_info_text}\n\n{workspace.get_library_docs()}\n\n{task}\n\nUse the notebook MCP server as your main execution environment."
 
     try:
         # Everything is handled internally - just call run_agent_interactive!

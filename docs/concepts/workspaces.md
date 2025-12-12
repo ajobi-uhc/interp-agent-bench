@@ -1,57 +1,34 @@
 # Workspaces
 
-A workspace is a set of libraries available to the agent.
-
-## Structure
+A workspace defines libraries the agent can import.
 
 ```python
 workspace = Workspace(libraries=[
-    Library.from_file("local_helper.py"),
-    Library.from_file("gpu_tools.py"),
+    Library.from_file("helpers.py"),
+    Library.from_file("steering_hook.py"),
 ])
 ```
 
-## How It Works
+Libraries become importable modules:
 
-Libraries become importable modules in the agent's environment.
-
-**Example:**
-
-`helpers.py`:
 ```python
-def format_result(data: dict) -> str:
-    return f"Result: {data}"
-```
-
-Agent can:
-```python
+# Agent can do:
 from helpers import format_result
-result = format_result({"key": "value"})
+from steering_hook import create_steering_hook
 ```
 
-## Local vs Remote
+## Toolkit
 
-**Local libraries:** Run in agent's process (notebook/local execution)
-**Remote libraries:** Run on GPU (scoped execution with `@expose` decorator)
+Common interpretability tools in `experiments/toolkit/`:
+
+- `extract_activations.py` — layer activation extraction
+- `steering_hook.py` — activation steering via hooks
+- `generate_response.py` — text generation helper
 
 ```python
-# Remote library (GPU)
-@expose
-def get_embedding(text: str) -> dict:
-    # Runs on GPU, returns to agent
-    ...
-```
-
-## Shared Libraries
-
-Common interpretability tools live in `experiments/shared_libraries/`:
-- `extract_activations.py` - Layer activation extraction
-- `steering_hook.py` - Activation steering via hooks
-
-Import them:
-```python
+toolkit = Path("experiments/toolkit")
 workspace = Workspace(libraries=[
-    Library.from_file(shared_libs / "steering_hook.py"),
-    Library.from_file(shared_libs / "extract_activations.py"),
+    Library.from_file(toolkit / "steering_hook.py"),
+    Library.from_file(toolkit / "extract_activations.py"),
 ])
 ```

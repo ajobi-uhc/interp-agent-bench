@@ -1,12 +1,8 @@
 # Sandbox Intro
 
-**Goal**: Spin up a GPU sandbox with a model and give an agent a Jupyter notebook to explore it
+Spin up a GPU with a model and let an agent explore it in a Jupyter notebook. See [Core Concepts](../concepts/overview.md) for how the pieces fit together.
 
-This is the simplest way to run interpretability research - the agent gets full access to a model in a Jupyter notebook environment.
-
-## Sandbox Configuration
-
-First, configure what hardware and models you want:
+## 1. Configure the sandbox
 
 ```python
 from src.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
@@ -19,24 +15,20 @@ config = SandboxConfig(
 )
 ```
 
-`SandboxConfig` tells the library what environment to provision:
+- `gpu` — A100 has 40GB VRAM, fits models up to ~30B params
+- `execution_mode` — NOTEBOOK means agent works in Jupyter on the GPU
+- `models` — HuggingFace model IDs to download and load
+- `python_packages` — installed in the sandbox
 
-- `gpu="A100"` - which GPU to use (A100 has 40GB VRAM, good for models under 30B params)
-- `execution_mode=ExecutionMode.NOTEBOOK` - agent runs in Jupyter notebook on the GPU
-- `models=[...]` - which models to download and load (specified by HuggingFace model ID)
-- `python_packages=[...]` - which packages to install (these are the minimum needed to load transformers models)
-
-Start the sandbox:
+## 2. Start the sandbox
 
 ```python
 sandbox = Sandbox(config).start()
 ```
 
-This provisions the GPU on Modal and downloads the model (first run takes ~2 minutes, then cached).
+Provisions the GPU on Modal. First run downloads the model (~2 min), subsequent runs use cache.
 
-## Workspace
-
-Next, configure what libraries/tools the agent has access to:
+## 3. Create a workspace
 
 ```python
 from src.workspace import Workspace
@@ -44,14 +36,9 @@ from src.workspace import Workspace
 workspace = Workspace(libraries=[])
 ```
 
-`Workspace` defines custom code you want to provide to the agent:
+[Workspace](../concepts/workspaces.md) defines custom code the agent can import. Empty for now — later examples add interpretability tools here.
 
-- `libraries=[]` - empty list means no custom libraries, just standard Python packages
-- You could add custom interpretability tools here (we'll see this in later experiments)
-
-## Session
-
-Finally, create a notebook session that connects the agent to the sandbox:
+## 4. Create a session
 
 ```python
 from src.execution import create_notebook_session
@@ -59,15 +46,12 @@ from src.execution import create_notebook_session
 session = create_notebook_session(sandbox, workspace)
 ```
 
-`create_notebook_session` returns:
+Returns:
+- `session.mcp_config` — config for agent to connect to the notebook
+- `session.jupyter_url` — open this to watch the agent work
+- `session.model_info_text` — model details to include in agent prompt
 
-- `session.mcp_config` - configuration for the agent to connect to Jupyter
-- `session.jupyter_url` - URL where you can view the notebook
-- `session.model_info_text` - info about loaded models to include in the agent prompt
-
-## Running the Agent
-
-Load your task and run the agent:
+## 5. Run the agent
 
 ```python
 from src.harness import run_agent
@@ -82,19 +66,12 @@ async for msg in run_agent(
 ):
     pass
 
-print(f"\n✓ Jupyter: {session.jupyter_url}")
+sandbox.terminate()
 ```
 
-The agent will:
+The notebook saves to `./outputs/` as the agent works.
 
-1. Connect to the Jupyter notebook via MCP
-2. Load and explore the model
-3. Run experiments based on your task
-4. Save everything to the notebook
-
-Visit `session.jupyter_url` to see the notebook with all the agent's code and outputs.
-
-## Full Example
+## Full example
 
 experiments/sandbox-intro/main.py
 
@@ -116,9 +93,7 @@ async def main():
         python_packages=["torch", "transformers", "accelerate"],
     )
     sandbox = Sandbox(config).start()
-
-    workspace = Workspace(libraries=[])
-    session = create_notebook_session(sandbox, workspace)
+    session = create_notebook_session(sandbox, Workspace(libraries=[]))
 
     task = (example_dir / "task.md").read_text()
     prompt = f"{session.model_info_text}\n\n{task}"
@@ -130,9 +105,7 @@ async def main():
             provider="claude"
         ):
             pass
-
-        print(f"\n✓ Jupyter: {session.jupyter_url}")
-
+        print(f"Notebook: {session.jupyter_url}")
     finally:
         sandbox.terminate()
 
@@ -140,11 +113,6 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Running
-
 ```bash
-cd experiments/sandbox-intro
-python main.py
+cd experiments/sandbox-intro && python main.py
 ```
-
-The agent will explore the model and save results to a Jupyter notebook.

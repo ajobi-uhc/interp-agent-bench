@@ -1,18 +1,13 @@
-# Scoped Sandbox Intro
+# Scoped Sandbox
 
-**Goal**: Run the agent locally while calling specific GPU functions via RPC to minimize costs
+Give the agent access to specific GPU functions instead of a full notebook. See [Scoped Sandbox concept](../concepts/scoped-sandbox.md) for more on interface files.
 
-In the sandbox-intro example, the agent runs on the GPU in a Jupyter notebook. This is great for exploration, but you pay for GPU time even while the agent is thinking. `ScopedSandbox` solves this by:
+## When to use this
 
-- Agent runs on your local machine (cheap)
-- GPU sandbox only runs specific functions you define (expensive only when called)
-- Communication happens via RPC (Remote Procedure Call)
+- **Full sandbox** (previous example) — agent has a notebook, can run arbitrary code, good for exploration
+- **Scoped sandbox** — agent can only call functions you define, good when you want explicit control
 
-Use this pattern when you have well-defined model operations and want to minimize GPU costs.
-
-## ScopedSandbox Configuration
-
-Instead of `Sandbox`, use `ScopedSandbox`:
+## 1. Configure the scoped sandbox
 
 ```python
 from src.environment import ScopedSandbox, SandboxConfig, ModelConfig
@@ -26,64 +21,45 @@ scoped = ScopedSandbox(SandboxConfig(
 scoped.start()
 ```
 
-Key differences from regular `Sandbox`:
+No `execution_mode` — the agent doesn't run in the sandbox. Instead, you serve specific functions from it.
 
-- No `execution_mode` parameter - the agent doesn't run in the sandbox
-- You'll "serve" specific functions from the sandbox instead of giving the agent full notebook access
+## 2. Define GPU functions
 
-## GPU Interface File
-
-Create a file that defines which functions run on the GPU:
-
-experiments/scoped-sandbox-intro/interface.py
+Create an interface file with functions that run on the GPU:
 
 ```python
+# interface.py
 from transformers import AutoModel, AutoTokenizer
 import torch
 
-# get_model_path is injected by the RPC server
-model_path = get_model_path("google/gemma-2-9b")
+model_path = get_model_path("google/gemma-2-9b")  # injected by RPC server
 model = AutoModel.from_pretrained(model_path, device_map="auto")
 tokenizer = AutoTokenizer.from_pretrained(model_path)
 
 @expose
 def get_model_info() -> dict:
     """Get basic model information."""
-    config = model.config
     return {
-        "num_layers": config.num_hidden_layers,
-        "hidden_size": config.hidden_size,
-        "vocab_size": config.vocab_size,
-        "device": str(model.device),
+        "num_layers": model.config.num_hidden_layers,
+        "hidden_size": model.config.hidden_size,
+        "vocab_size": model.config.vocab_size,
     }
 
 @expose
 def get_embedding(text: str) -> dict:
     """Get text embedding from model."""
     inputs = tokenizer(text, return_tensors="pt").to(model.device)
-
     with torch.no_grad():
         outputs = model(**inputs, output_hidden_states=True)
-
     embedding = outputs.hidden_states[-1].mean(dim=1).squeeze()
-
-    return {
-        "text": text,
-        "embedding": embedding.tolist(),
-        "preview": embedding[:10].tolist(),
-    }
+    return {"embedding": embedding.tolist()}
 ```
 
-The `@expose` decorator:
+- `@expose` marks functions the agent can call — everything else is hidden
+- Functions must return JSON-serializable types (use `.tolist()` for tensors)
+- `get_model_path()` is injected — returns the cached model path
 
-- Marks functions that can be called via RPC from your local machine
-- Only `@expose` decorated functions are accessible - this gives you explicit control
-- Functions must return JSON-serializable types (dict, list, str, int, etc.) - not PyTorch tensors
-- That's why we use `.tolist()` to convert tensors to lists before returning
-
-## Serving the Interface
-
-"Serving" means hosting the interface file on the GPU sandbox and creating an API the agent can call:
+## 3. Serve the interface
 
 ```python
 model_tools = scoped.serve(
@@ -93,152 +69,70 @@ model_tools = scoped.serve(
 )
 ```
 
-What this does:
+Loads `interface.py` on the GPU and creates an RPC server.
 
-- Loads `interface.py` in the GPU sandbox
-- Finds all `@expose` decorated functions
-- Creates an RPC server that the agent can call
-- Returns a `Library` object that you add to the workspace
+`expose_as` options:
+- `"library"` — agent imports it: `import model_tools; model_tools.get_embedding("hello")`
+- `"mcp"` — agent sees them as MCP tools
 
-The `expose_as` parameter determines how the agent accesses these functions:
-
-### `expose_as="library"` (Python imports)
-
-The agent imports it like a Python module:
+## 4. Add local helpers (optional)
 
 ```python
-import model_tools
-result = model_tools.get_embedding("hello world")
-```
-
-When the agent calls `model_tools.get_embedding()`, the library:
-
-1. Serializes the arguments to JSON
-2. Sends them via RPC to the GPU sandbox
-3. Runs the function on the GPU
-4. Sends the result back
-5. Returns it to the agent
-
-### `expose_as="mcp"` (MCP tools)
-
-The agent gets MCP tools it can call:
-
-```python
-model_tools = scoped.serve(
-    str(example_dir / "interface.py"),
-    expose_as="mcp",
-    name="model_tools"
-)
-```
-
-The agent sees them as MCP tools in its tool list and calls them like:
-
-```
-Tool: get_embedding
-Parameters: {"text": "hello world"}
-```
-
-**When to use each:**
-
-- Use `expose_as="library"` when:
-  - Agent needs to write Python code that imports and uses functions
-  - You want the agent to treat it like a normal Python library
-  - You're using `create_local_session` (agent executes Python directly)
-
-- Use `expose_as="mcp"` when:
-  - You want functions available as tools in the agent's tool list
-  - Building multi-agent systems where one agent controls another via tools
-  - You need the agent to see function signatures and descriptions as tools
-
-## Local Helper Library
-
-You can also have local libraries that run on your machine (no GPU):
-
-experiments/scoped-sandbox-intro/helpers.py
-
-```python
+# helpers.py
 def format_result(data: dict) -> str:
     """Format a result dict as markdown."""
-    lines = ["## Result", ""]
+    lines = ["## Result"]
     for key, value in data.items():
         lines.append(f"- **{key}**: {value}")
     return "\n".join(lines)
 ```
 
-This is just a regular Python file. No `@expose` decorator needed because it runs locally.
+Local files run on your machine, not the GPU. No `@expose` needed.
 
-## Workspace with Mixed Libraries
-
-Now create a workspace with both local and remote libraries:
+## 5. Create workspace and session
 
 ```python
 from src.workspace import Workspace, Library
+from src.execution import create_local_session
 
 workspace = Workspace(libraries=[
-    Library.from_file(example_dir / "helpers.py"),  # Local library
-    model_tools,  # Remote library (from scoped.serve())
+    Library.from_file(example_dir / "helpers.py"),  # local
+    model_tools,  # remote (from scoped.serve)
 ])
-```
-
-The agent can import both:
-
-- `helpers` runs instantly on your machine
-- `model_tools` makes RPC calls to the GPU
-
-## Local Session
-
-Instead of `create_notebook_session`, use `create_local_session`:
-
-```python
-from src.execution import create_local_session
 
 session = create_local_session(
     workspace=workspace,
     workspace_dir=str(example_dir / "workspace"),
-    name="minimal-example"
+    name="scoped-example"
 )
 ```
 
-Key differences from notebook session:
+`create_local_session` runs the agent locally. When it calls `model_tools.*`, the call goes to the GPU via RPC. See [Workspaces](../concepts/workspaces.md) for more on libraries.
 
-- Agent runs on your local machine, not in a Jupyter notebook on the GPU
-- `workspace_dir` is where the agent can save files locally
-- No `session.jupyter_url` - there's no notebook to view
-- The agent executes Python directly instead of through Jupyter
-
-## Running the Agent
+## 6. Run the agent
 
 ```python
 from src.harness import run_agent
 
 task = """
-You have two libraries available:
+You have access to:
+- `model_tools` — GPU functions (get_model_info, get_embedding)
+- `helpers` — local utilities (format_result)
 
-1. `helpers` - formatting utilities (runs locally)
-2. `model_tools` - model analysis tools (runs on GPU via RPC)
-
-Task:
-- Import and call model_tools.get_model_info() to see model specs
-- Import and call model_tools.get_embedding("hello world")
-- Import and use helpers.format_result() to format the output
-- Show me the formatted results
+Get the model info and an embedding for "hello world", then format the results.
 """
 
-async for message in run_agent(
+async for msg in run_agent(
     prompt=task,
-    mcp_config={},  # Empty - local session doesn't use MCP
+    mcp_config={},
     provider="claude"
 ):
     pass
 
-print(f"\n✓ Session: {session.name}")
+scoped.terminate()
 ```
 
-The agent will import both libraries and use them. GPU only charges during `model_tools` function calls, not during agent reasoning.
-
-## Full Example
-
-experiments/scoped-sandbox-intro/main.py
+## Full example
 
 ```python
 import asyncio
@@ -256,7 +150,6 @@ async def main():
         models=[ModelConfig(name="google/gemma-2-9b")],
         python_packages=["torch", "transformers", "accelerate"],
     ))
-
     scoped.start()
 
     model_tools = scoped.serve(
@@ -273,32 +166,20 @@ async def main():
     session = create_local_session(
         workspace=workspace,
         workspace_dir=str(example_dir / "workspace"),
-        name="minimal-example"
+        name="scoped-example"
     )
 
     task = """
-    You have two libraries available:
+    You have access to:
+    - `model_tools` — GPU functions (get_model_info, get_embedding)
+    - `helpers` — local utilities (format_result)
 
-    1. `helpers` - formatting utilities (runs locally)
-    2. `model_tools` - model analysis tools (runs on GPU via RPC)
-
-    Task:
-    - Import and call model_tools.get_model_info() to see model specs
-    - Import and call model_tools.get_embedding("hello world")
-    - Import and use helpers.format_result() to format the output
-    - Show me the formatted results
+    Get the model info and an embedding for "hello world", then format the results.
     """
 
     try:
-        async for message in run_agent(
-            prompt=task,
-            mcp_config={},
-            provider="claude"
-        ):
+        async for msg in run_agent(prompt=task, mcp_config={}, provider="claude"):
             pass
-
-        print(f"\n✓ Session: {session.name}")
-
     finally:
         scoped.terminate()
 
@@ -306,25 +187,6 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Running
-
 ```bash
-cd experiments/scoped-sandbox-intro
-python main.py
+cd experiments/scoped-sandbox-intro && python main.py
 ```
-
-The agent will import both libraries and make RPC calls to the GPU only when calling `model_tools` functions.
-
-## When to Use This Pattern
-
-Use `ScopedSandbox` + RPC when:
-
-- You have well-defined model operations
-- You want to minimize GPU costs
-- The workflow is predictable
-
-Use `Sandbox` + Notebook when:
-
-- Research is exploratory
-- You're not sure what operations you'll need
-- You want the agent to experiment freely

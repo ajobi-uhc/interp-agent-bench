@@ -244,3 +244,13 @@ class Library:
     def _install_local(self, session):
         """Install in local session by writing to local workspace."""
         self._write_to_local(session.workspace_path)
+
+    def get_prompt_docs(self) -> str:
+        """
+        Get documentation for including in agent prompt.
+
+        Returns the docs field if set, otherwise returns a basic import hint.
+        """
+        if self.docs:
+            return f"## {self.name}\n\n{self.docs}"
+        return f"## {self.name}\n\nAvailable via: `import {self.name}`"

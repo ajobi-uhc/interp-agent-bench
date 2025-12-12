@@ -3,45 +3,40 @@
 ## run_agent
 
 ```python
-from src.harness import run_agent
-
-async for message in run_agent(
+async for msg in run_agent(
     prompt: str,
-    mcp_config: dict,
+    mcp_config: dict = {},
     provider: str = "claude",
     model: str = None,
+    user_message: str = None,
 ):
-    print(message)
+    print(msg)
 ```
 
-Run an agent with the given task prompt. Streams messages as the agent works.
+Run agent with task prompt. Streams messages.
 
 **Parameters:**
-- `prompt` - Task description for the agent
-- `mcp_config` - MCP server configuration (from session)
-- `provider` - Agent provider ("claude", "openai")
-- `model` - Specific model to use (optional, uses default for provider)
 
-**Returns:** Async iterator of message strings
+- `prompt` — system prompt / task description
+- `mcp_config` — from session (or empty dict)
+- `provider` — "claude", "openai", or "gemini"
+- `model` — specific model (optional)
+- `user_message` — initial user message (optional)
 
 **Example:**
 
 ```python
-session = create_notebook_session(sandbox, workspace)
-
 async for msg in run_agent(
-    prompt="Explore the model architecture",
+    prompt="Explore this model's behavior",
     mcp_config=session.mcp_config,
     provider="claude"
 ):
-    print(msg)
+    pass
 ```
 
 ## run_agent_interactive
 
 ```python
-from src.harness import run_agent_interactive
-
 await run_agent_interactive(
     mcp_config: dict,
     provider: str = "claude",
@@ -49,11 +44,4 @@ await run_agent_interactive(
 )
 ```
 
-Start an interactive agent session where you can chat with the agent.
-
-**Parameters:**
-- `mcp_config` - MCP server configuration (from session)
-- `provider` - Agent provider ("claude", "openai")
-- `model` - Specific model to use (optional)
-
-**Use case:** For debugging or manual exploration of the sandbox environment.
+Interactive chat session with agent. For debugging or manual exploration.

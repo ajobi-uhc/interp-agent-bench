@@ -17,7 +17,7 @@ from src.harness import run_agent
 
 async def main():
     example_dir = Path(__file__).parent
-    shared_libs = example_dir.parent / "shared_libraries"
+    toolkit = example_dir.parent / "toolkit"
 
     config = SandboxConfig(
         gpu="A100",
@@ -35,17 +35,17 @@ async def main():
 
     workspace = Workspace(
         libraries=[
-            Library.from_file(shared_libs / "steering_hook.py"),
-            Library.from_file(shared_libs / "extract_activations.py"),
-            Library.from_file(shared_libs / "generate_response.py"),
+            Library.from_file(toolkit / "steering_hook.py"),
+            Library.from_file(toolkit / "extract_activations.py"),
+            Library.from_file(toolkit / "generate_response.py"),
         ]
     )
 
     session = create_notebook_session(sandbox, workspace)
 
     task = (example_dir / "task.md").read_text()
-    research_methodology = (shared_libs / "research_methodology.md").read_text()
-    prompt = f"{session.model_info_text}\n\n{research_methodology}\n\n{task}"
+    research_methodology = (toolkit / "research_methodology.md").read_text()
+    prompt = f"{session.model_info_text}\n\n{workspace.get_library_docs()}\n\n{research_methodology}\n\n{task}"
 
     try:
         async for msg in run_agent(prompt=prompt, mcp_config=session.mcp_config, provider="claude"):

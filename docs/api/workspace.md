@@ -3,38 +3,49 @@
 ## Workspace
 
 ```python
-from src.workspace import Workspace, Library
-
-workspace = Workspace(
+Workspace(
     libraries: list[Library] = [],
-    local_dirs: list[tuple[str, str]] = [],
+    skills: list[Skill] = [],
     skill_dirs: list[str] = [],
+    local_dirs: list[tuple] = [],       # [(src_path, dest_path), ...]
+    local_files: list[tuple] = [],
+    custom_init_code: str = None,
 )
 ```
 
-Defines files, libraries, and skills available to the agent.
+**Methods:**
 
-**Fields:**
-- `libraries` - Python libraries to inject into agent's environment
-- `local_dirs` - Local directories to mount: `[(src_path, dest_path), ...]`
-- `skill_dirs` - Directories containing agent skills/tools
+- `get_library_docs()` → str — combined docs for all libraries (for agent prompt)
 
 ## Library
 
 ```python
-from src.workspace import Library
-
 # From local file
-lib = Library.from_file("path/to/helpers.py")
+lib = Library.from_file("helpers.py")
 
-# From remote GPU (via ScopedSandbox.serve())
-model_tools = scoped_sandbox.serve("interface.py", name="model_tools")
+# From code string
+lib = Library.from_code("utils", "def foo(): ...")
+
+# From ScopedSandbox (RPC)
+lib = scoped.serve("interface.py", expose_as="library", name="tools")
 ```
 
-Represents a Python library available to the agent.
-
 **Methods:**
-- `Library.from_file(path: str)` - Load library from local file
-- `Library.from_code(name: str, code: str)` - Create library from code string
 
-**Note:** Libraries from `ScopedSandbox.serve()` are automatically wrapped as remote RPC libraries.
+- `Library.from_file(path)` → Library
+- `Library.from_code(name, code)` → Library
+- `get_prompt_docs()` → str — documentation for agent
+
+## Skill
+
+```python
+# From directory with SKILL.md
+skill = Skill.from_dir("skills/steering")
+
+# From function with @expose decorator
+@expose
+def extract_activation(...): ...
+skill = Skill.from_function(extract_activation)
+```
+
+Skills are discovered by Claude Code and shown in agent's skill list.

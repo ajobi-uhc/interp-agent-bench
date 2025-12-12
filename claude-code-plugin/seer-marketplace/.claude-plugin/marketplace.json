@@ -1,17 +1,17 @@
 {
-  "name": "sena-local",
+  "name": "seer-local",
   "owner": {
     "name": "Interp Research",
     "email": "research@example.com"
   },
   "metadata": {
-    "description": "Local marketplace for Sena interpretability research plugin",
+    "description": "Local marketplace for Seer interpretability research plugin",
     "version": "1.0.0"
   },
   "plugins": [
     {
-      "name": "sena",
-      "source": "./../sena-plugin",
+      "name": "seer",
+      "source": "./../seer-plugin",
       "description": "Sandboxed GPU environments for interpretability research. Set up A100/H100 sandboxes with pre-loaded models, run experiments in Jupyter notebooks, and execute interpretability techniques remotely.",
       "version": "1.0.0",
       "author": {
