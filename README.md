@@ -109,9 +109,9 @@ View some example results notebooks in [example_runs](https://github.com/ajobi-u
 ### 3. Verify that plugin is installed
 Restart claude code and reopen claude and run 
 ```bash
-/mcps
+/mcp
 ```
-You should see the seer mcp plugin as live.
+You should see the seer mcp plugin as connected.
 
 ### 4. Ask claude with Seer plugin to run an experiment
 Talk to claude normally and ask it to write a task for you - it will automatically use the seer plugin and create the required code, prompts and run the experiment. 
