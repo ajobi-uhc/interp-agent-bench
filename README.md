@@ -17,10 +17,10 @@ This approach is valuable because it allows you to see what the agent is doing a
 - **Building and improving existing agents** Using seer to build better investigative agents (see our post on investigations into Chinese models soon!), building better auditing agents etc.
 
 ## Example runs
-- [Replicate the key experiment in the Anthropic introspection paper on gemma3 27b (or model of your choice)](https://github.com/ajobi-uhc/seer/tree/main/experiments/introspection)
-- [Investigate the model from Sipinski et al. (a model that is finetuned to believe the user is a female) and discover its hidden preference](https://ajobi-uhc.github.io/seer/experiments/03-hidden-preference/)
-- [Create and easily modify a hackable version of Petri for the task of categorizing and finding weird behaviours in an environment](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/)
-- [Use SAE based data interpretability techniques from Jiang et al. to diff two different gemini checkpoints and discover differences in behaviour (including provisioning a GPU to run llama 70b to run the SAE on)](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/)
+- [Introspection](https://github.com/ajobi-uhc/seer/tree/main/experiments/introspection) — replicate the Anthropic introspection experiment on gemma3 27b
+- [Hidden Preference](https://ajobi-uhc.github.io/seer/experiments/03-hidden-preference/) — investigate a finetuned model and discover its hidden preference
+- [Petri Harness](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/) — hackable Petri for categorizing and finding weird model behaviors
+- [Checkpoint Diffing](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) — use SAE techniques to diff Gemini checkpoints and find behavioral differences
 
 ## You need modal to run Seer
 We use modal as the gpu infrastructure provider
