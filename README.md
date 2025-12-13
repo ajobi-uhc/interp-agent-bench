@@ -7,10 +7,7 @@
 Seer is a framework for having agents conduct interpretability work and investigations. 
 The core mechanism involves launching a remote sandbox hosted on a remote GPU or CPU. The agent operates an IPython kernel and notebook on this remote host.
 
-<video width="1200" controls autoplay muted loop>
-  <source src="docs/demo.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+![Agent running interpretability experiment](docs/demo.gif)
 
 This approach is valuable because it allows you to see what the agent is doing as it runs, and it can iteratively add things, fix bugs, and adjust its previous work. You can provide tooling to make an environment and any interpretability techniques available as function calls that the agent can use in the notebook as part of writing normal code.
 
