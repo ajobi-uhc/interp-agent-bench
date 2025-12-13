@@ -7,19 +7,22 @@
 Seer is a framework for having agents conduct interpretability work and investigations. 
 The core mechanism involves launching a remote sandbox hosted on a remote GPU or CPU. The agent operates an IPython kernel and notebook on this remote host.
 
+![Agent running interpretability experiment](docs/demo.gif)
+
 This approach is valuable because it allows you to see what the agent is doing as it runs, and it can iteratively add things, fix bugs, and adjust its previous work. You can provide tooling to make an environment and any interpretability techniques available as function calls that the agent can use in the notebook as part of writing normal code.
 
 ## When to use Seer
-- **Exploratory investigations** where you have a hypothesis but want to try many variations quickly
-- **Scaling up** measuring how well different interp techniques perform through giving agents controlled access to them
-- **Replicating known experiments** on new models — the agent knows the recipe, you just point it at your model
-- **Building and improving existing agents** Using seer to build better investigative agents (see our post on investigations into Chinese models soon!), building better auditing agents etc.
+- **Exploratory investigations**: You have a hypothesis about a model's behavior but want to try many variations quickly without manually rerunning notebooks
+- **Benchmarking techniques**: Measure how well different interp methods perform by giving agents controlled access to them and comparing results across runs
+- **Replicating experiments on new models**: The agent knows the recipe (e.g., the Anthropic introspection setup), you just point it at your model
+- **Building better agents**: Use Seer to iterate on investigative or auditing agents themselves - test different scaffolding, prompts, or tool access patterns
 
 ## Example runs
-- [Introspection](https://github.com/ajobi-uhc/seer/tree/main/experiments/introspection) — replicate the Anthropic introspection experiment on gemma3 27b
 - [Hidden Preference](https://ajobi-uhc.github.io/seer/experiments/03-hidden-preference/) — investigate a finetuned model and discover its hidden preference
-- [Petri Harness](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/) — hackable Petri for categorizing and finding weird model behaviors
 - [Checkpoint Diffing](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) — use SAE techniques to diff Gemini checkpoints and find behavioral differences
+- [Introspection](https://github.com/ajobi-uhc/seer/tree/main/experiments/introspection) — replicate the Anthropic introspection experiment on gemma3 27b
+- [Petri Harness](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/) — hackable Petri for categorizing and finding weird model behaviors
+
 
 ## You need modal to run Seer
 We use modal as the gpu infrastructure provider
@@ -70,7 +73,7 @@ uv run python main.py
 **What happens:**
 1. Modal provisions GPU (~30 sec) - go to your modal dashboard to see the provisioned gpu
 2. Downloads models to Modal volume (cached for future runs)
-3. Starts sandbox with specified execution mode
+3. Starts sandbox with specified session type (can be local or notebook)
 4. Agent runs on your local computer and calls mcp tool calls to edit the notebook
 5. Notebook results are continually saved to `./outputs/`
 

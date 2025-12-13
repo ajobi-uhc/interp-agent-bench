@@ -1,6 +1,7 @@
 # Hidden Preference Investigation
 
 Investigate a fine-tuned model for hidden biases using interpretability tools.
+[Notebook](https://github.com/ajobi-uhc/seer/blob/main/example_runs/find_hidden_gender_assumption.ipynb) produced by this experiment
 
 This builds on [Sandbox Intro](sandbox-intro.md) by adding [interpretability libraries](../concepts/workspaces.md) to the workspace.
 

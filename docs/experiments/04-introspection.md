@@ -1,6 +1,7 @@
 # Introspection
 
 Replicate the Anthropic introspection experiment: can a model detect which concept is being injected into its activations?
+[Notebook](https://github.com/ajobi-uhc/seer/blob/main/example_runs/introspection_gemma_27b.ipynb) produced by this experiment
 
 This uses the same setup as [Hidden Preference](03-hidden-preference.md) — notebook mode with steering libraries.
 

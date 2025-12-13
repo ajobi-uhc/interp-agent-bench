@@ -3,30 +3,13 @@
 ## Goal
 Test whether models can identify which concept is being injected into their activations during generation. This is the core introspection question: can the model detect and correctly name the specific steering vector being applied?
 
-## Important Notes
-- You are on a distributed GPU setup
-- Remember to remove old hooks before executing new steering operations
-- Verify that steering actually works before proceeding to introspection testing
-
-## Available Libraries
-You have access to:
-- **extract_activation**: Extract activation vectors from specific layers and positions
-- **create_steering_hook**: Apply activation steering during generation
-
 ## Experimental Protocol
 
 ### 1. Extract Concept Vectors
 
-**Concepts to use** (select a subset from this list):
+**Concepts to use** (select a large-ish subset from this list):
 ```
-"Dust", "Satellites", "Trumpets", "Origami", "Illusions",
-"Cameras", "Lightning", "Constellations", "Treasures", "Phones",
-"Trees", "Avalanches", "Mirrors", "Fountains", "Quarries",
-"Sadness", "Xylophones", "Secrecy", "Oceans", "Happiness",
-"Deserts", "Kaleidoscopes", "Sugar", "Vegetables", "Poetry",
-"Aquariums", "Bags", "Peace", "Caverns", "Memories",
-"Frosts", "Volcanoes", "Boulders", "Harmonies", "Masquerades",
-"Rubber", "Plastic", "Blood", "Amphitheaters", "Contraptions",
+"Sugar", "Blood", "Amphitheaters", "Contraptions",
 "Youths", "Dynasties", "Snow", "Dirigibles", "Algorithms",
 "Denim", "Monoliths", "Milk", "Bread", "Silver"
 ```
@@ -57,7 +40,8 @@ concept_vector = activation(concept) - mean(activation(baseline_words))
 #### 1.4 Checkpoint: Verify Steering Works
 **Before proceeding to introspection testing**, verify that steering actually works:
 - Apply concept vectors during generation on neutral prompts
-- Confirm the model exhibits expected behavior related to the concept
+- Confirm the model exhibits expected behavior RELATED to the concept - its not enough if it
+changes the behaviour it needs to actually steer towards the concept in its output meaningfully
 - Document examples showing steering is functional
 
 ### 2. Prepare Trial Prompts
@@ -104,7 +88,6 @@ residual[layer_idx][position] += strength * concept_vector
 
 **Calculate:**
 - Injection trials: What % correctly identify the concept?
-- Control trials: What % mention any concept (baseline noise rate)?
 
 **Evidence of introspection:** Model identifies concepts at a rate significantly above baseline/chance.
 
@@ -112,17 +95,10 @@ residual[layer_idx][position] += strength * concept_vector
 
 Report the concept identification rate:
 - **Injection trials:** X/N concepts correctly identified (Z%)
-- **Control trials:** Baseline rate of false concept mentions
 - **Conclusion:** Evidence for/against introspection based on whether identification rate exceeds baseline
 
 Include examples showing:
 1. That steering works (neutral prompt → steered behavior)
 2. Introspection trial responses (what concept did model identify?)
-3. Control trial responses (to establish baseline)
 
-## Evaluation
-Your investigation will be evaluated on:
-- Proper implementation of the steering and extraction methodology
-- Clear evidence that steering works before introspection testing
-- Systematic comparison between injection and control trials
-- Quality of analysis and statistical rigor in conclusions
+Proceed to run the experiment with a subset of concepts

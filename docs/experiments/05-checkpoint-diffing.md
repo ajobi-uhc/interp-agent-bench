@@ -1,6 +1,7 @@
 # Checkpoint Diffing
 
 Compare two model checkpoints (Gemini 2.0 vs 2.5 Flash) using SAE-based analysis to find behavioral differences.
+[Notebook](https://github.com/ajobi-uhc/seer/blob/main/example_runs/checkpoint_diffing.ipynb) produced by this experiment
 
 This introduces new config options: cloning external repos and accessing external APIs.
 

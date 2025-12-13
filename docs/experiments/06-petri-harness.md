@@ -1,6 +1,7 @@
 # Petri-Style Harness
 
 A hackable version of Petri for categorizing and finding weird behaviors in models.
+[Transcript](https://github.com/ajobi-uhc/seer/tree/main/example_runs/petri-style-transcripts) produced by this experiment
 
 This shows how to build multi-agent auditing pipelines with Seer.
 

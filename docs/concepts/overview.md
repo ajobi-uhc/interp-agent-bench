@@ -40,12 +40,12 @@ sandbox = Sandbox(SandboxConfig(
 ```
 
 Two types:
-- **Sandbox** — agent has full access (notebook mode)
-- **ScopedSandbox** — agent can only call functions you expose (local mode)
+- **Sandbox** — agent has full access
+- **ScopedSandbox** — agent can only call functions you expose
 
 ## Workspace
 
-Libraries the agent can import. [Details →](workspaces.md)
+Any files/libraries the agent should have in its workspace. [Details →](workspaces.md)
 
 ```python
 workspace = Workspace(libraries=[
@@ -58,9 +58,9 @@ workspace = Workspace(libraries=[
 How the agent connects to the sandbox. [Details →](execution.md)
 
 ```python
-session = create_notebook_session(sandbox, workspace)  # Full access
+session = create_notebook_session(sandbox, workspace)  # Access via notebook
 # or
-session = create_local_session(workspace, workspace_dir)  # Scoped access
+session = create_cli_session(workspace, workspace_dir)  # Access via the cli
 ```
 
 ## Harness
