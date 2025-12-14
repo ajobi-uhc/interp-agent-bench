@@ -23,6 +23,9 @@ This approach is valuable because it allows you to see what the agent is doing a
 - [Introspection](https://github.com/ajobi-uhc/seer/tree/main/experiments/introspection) — replicate the Anthropic introspection experiment on gemma3 27b
 - [Petri Harness](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/) — hackable Petri for categorizing and finding weird model behaviors
 
+## Using Seer for a simple investigation
+[![Seer demo](https://img.youtube.com/vi/k_SuTgUp2fc/0.jpg)](https://youtu.be/k_SuTgUp2fc)
+
 
 ## You need modal to run Seer
 We use modal as the gpu infrastructure provider
