@@ -31,7 +31,6 @@ Example:
         output = model.generate(...)
 """
 
-
 def create_steering_hook(model, layer_idx, vector, strength=1.0, start_pos=0):
     import torch
 
@@ -47,57 +46,60 @@ def create_steering_hook(model, layer_idx, vector, strength=1.0, start_pos=0):
         def __init__(self):
             self.hook_handle = None
             self.device = None
-            self.vec = vector.cpu()  # Start on CPU
+            self.vec = vector.cpu()
             self.layer_path = None
 
         def hook_fn(self, module, input, output):
             hidden = output[0] if isinstance(output, tuple) else output
 
-            # Move vector to correct device on first call
             if self.device is None:
                 self.device = hidden.device
                 self.vec = self.vec.to(self.device)
 
-            # Validate vector shape matches hidden dimension
             if self.vec.shape[0] != hidden.shape[-1]:
                 raise ValueError(
                     f"Vector dimension {self.vec.shape[0]} doesn't match "
                     f"hidden dimension {hidden.shape[-1]}"
                 )
 
-            # Inject from start_pos onwards
             if hidden.shape[1] > start_pos:
                 hidden[:, start_pos:, :] += strength * self.vec.unsqueeze(0).unsqueeze(0)
 
             return (hidden,) + output[1:] if isinstance(output, tuple) else hidden
 
         def __enter__(self):
-            # Find the layer - try common paths with detailed error messages
             layer = None
             attempted_paths = []
-
-            if hasattr(model, 'model') and hasattr(model.model, 'layers'):
-                layer = model.model.layers[layer_idx]
-                self.layer_path = f"model.model.layers[{layer_idx}]"
-            elif hasattr(model, 'model') and hasattr(model.model, 'language_model'):
-                if hasattr(model.model.language_model, 'layers'):
-                    layer = model.model.language_model.layers[layer_idx]
-                    self.layer_path = f"model.model.language_model.layers[{layer_idx}]"
-                    attempted_paths.append("model.model.language_model.layers")
-            elif hasattr(model, 'transformer') and hasattr(model.transformer, 'h'):
-                layer = model.transformer.h[layer_idx]
-                self.layer_path = f"model.transformer.h[{layer_idx}]"
-            else:
-                attempted_paths.extend([
-                    "model.model.layers",
-                    "model.model.language_model.layers",
-                    "model.transformer.h"
-                ])
-
+            
+            # Check if this is a PEFT model
+            is_peft = hasattr(model, 'base_model') and hasattr(model, 'peft_config')
+            base = model.base_model.model if is_peft else model
+            
+            # Try common layer paths
+            paths_to_try = [
+                ('model.layers', lambda m: m.model.layers if hasattr(m, 'model') and hasattr(m.model, 'layers') else None),
+                ('model.language_model.layers', lambda m: m.model.language_model.layers if hasattr(m, 'model') and hasattr(m.model, 'language_model') and hasattr(m.model.language_model, 'layers') else None),
+                ('transformer.h', lambda m: m.transformer.h if hasattr(m, 'transformer') and hasattr(m.transformer, 'h') else None),
+                ('layers', lambda m: m.layers if hasattr(m, 'layers') else None),
+            ]
+            
+            for path_name, getter in paths_to_try:
+                attempted_paths.append(path_name)
+                layers = getter(base)
+                if layers is not None:
+                    try:
+                        layer = layers[layer_idx]
+                        prefix = "model.base_model.model." if is_peft else "model."
+                        self.layer_path = f"{prefix}{path_name}[{layer_idx}]"
+                        break
+                    except (IndexError, TypeError):
+                        continue
+            
             if layer is None:
                 error_msg = f"Cannot find layers in model. Attempted paths: {attempted_paths}"
-                if hasattr(model, '__dict__'):
-                    error_msg += f"\nAvailable attributes: {list(model.__dict__.keys())}"
+                error_msg += f"\nIs PEFT model: {is_peft}"
+                if hasattr(base, '__dict__'):
+                    error_msg += f"\nAvailable attributes on base: {list(base.__dict__.keys())}"
                 raise ValueError(error_msg)
 
             self.hook_handle = layer.register_forward_hook(self.hook_fn)

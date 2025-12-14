@@ -90,33 +90,6 @@ uv run python main.py
 
 ### 5. Explore more experiments
 
-Refer to [docs](https://ajobi-uhc.github.io/seer/experiments/sandbox-intro/) to learn how to use the library to define your own experiments.
+Refer to [docs](https://ajobi-uhc.github.io/seer) to learn how to use the library to define your own experiments.
 
 View some example results notebooks in [example_runs](https://github.com/ajobi-uhc/seer/tree/main/example_runs)
-
-## Other ways to use Seer
-
-### Run claude code with Seer as a [claude plugin](https://code.claude.com/docs/en/plugins)
-
-### 1. Open claude and run 
-
-```bash
-/plugin marketplace add ajobi-uhc/seer
-```
-
-### 2. Once marketplace is installed - install plugin
-```bash
-/plugin install seer@seer-local
-```
-
-### 3. Verify that plugin is installed
-Restart claude code and reopen claude and run 
-```bash
-/mcp
-```
-You should see the seer mcp plugin as connected.
-
-### 4. Ask claude with Seer plugin to run an experiment
-Talk to claude normally and ask it to write a task for you - it will automatically use the seer plugin and create the required code, prompts and run the experiment. 
-The seer plugin returns an mcp config that claude code uses to attach the notebook session
-and claude will work in the notebook while you interactively chat with it.

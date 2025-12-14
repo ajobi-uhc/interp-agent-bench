@@ -2077,72 +2077,6 @@ wheels = [
 ]
 
 [[package]]
-name = "interp-infra"
-version = "0.3.0"
-source = { editable = "." }
-dependencies = [
-    { name = "anthropic" },
-    { name = "claude-agent-sdk" },
-    { name = "cloudpickle" },
-    { name = "fastmcp" },
-    { name = "ipykernel" },
-    { name = "jupyter-client" },
-    { name = "jupyter-server" },
-    { name = "matplotlib" },
-    { name = "modal" },
-    { name = "nbformat" },
-    { name = "openai" },
-    { name = "openai-agents" },
-    { name = "pillow" },
-    { name = "psutil" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "rich" },
-    { name = "runpod" },
-    { name = "skypilot-nightly", extra = ["runpod"] },
-    { name = "torch" },
-]
-
-[package.optional-dependencies]
-docs = [
-    { name = "mkdocs-material" },
-    { name = "mkdocstrings", extra = ["python"] },
-]
-web = [
-    { name = "flask" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anthropic", specifier = ">=0.40.0" },
-    { name = "claude-agent-sdk", specifier = ">=0.1.0" },
-    { name = "cloudpickle", specifier = ">=3.0.0" },
-    { name = "fastmcp", specifier = ">=2.10.6" },
-    { name = "flask", marker = "extra == 'web'", specifier = ">=3.0.0" },
-    { name = "ipykernel", specifier = ">=6.30.0" },
-    { name = "jupyter-client", specifier = ">=8.6.3" },
-    { name = "jupyter-server", specifier = ">=2.16.0" },
-    { name = "matplotlib", specifier = ">=3.10.7" },
-    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.0.0" },
-    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
-    { name = "modal", specifier = ">=0.49.0" },
-    { name = "nbformat", specifier = ">=5.10.4" },
-    { name = "openai", specifier = ">=1.0.0" },
-    { name = "openai-agents", specifier = ">=0.4.0" },
-    { name = "pillow", specifier = ">=11.3.0" },
-    { name = "psutil", specifier = ">=7.0.0" },
-    { name = "python-dotenv", specifier = ">=1.1.1" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "requests", specifier = ">=2.32.4" },
-    { name = "rich", specifier = ">=13.0.0" },
-    { name = "runpod", specifier = ">=1.5.1" },
-    { name = "skypilot-nightly", extras = ["runpod"] },
-    { name = "torch" },
-]
-provides-extras = ["web", "docs"]
-
-[[package]]
 name = "invoke"
 version = "2.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -5416,6 +5350,72 @@ sdist = { url = "https://files.pythonhosted.org/packages/31/9f/11ef35cf1027c1339
 wheels = [
     { url = "https://files.pythonhosted.org/packages/91/ff/2e2eed29e02c14a5cb6c57f09b2d5b40e65d6cc71f45b52e0be295ccbc2f/secretstorage-3.4.0-py3-none-any.whl", hash = "sha256:0e3b6265c2c63509fb7415717607e4b2c9ab767b7f344a57473b779ca13bd02e", size = 15272, upload-time = "2025-09-09T16:42:12.744Z" },
 ]
+
+[[package]]
+name = "seer"
+version = "0.3.0"
+source = { editable = "." }
+dependencies = [
+    { name = "anthropic" },
+    { name = "claude-agent-sdk" },
+    { name = "cloudpickle" },
+    { name = "fastmcp" },
+    { name = "ipykernel" },
+    { name = "jupyter-client" },
+    { name = "jupyter-server" },
+    { name = "matplotlib" },
+    { name = "modal" },
+    { name = "nbformat" },
+    { name = "openai" },
+    { name = "openai-agents" },
+    { name = "pillow" },
+    { name = "psutil" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "runpod" },
+    { name = "skypilot-nightly", extra = ["runpod"] },
+    { name = "torch" },
+]
+
+[package.optional-dependencies]
+docs = [
+    { name = "mkdocs-material" },
+    { name = "mkdocstrings", extra = ["python"] },
+]
+web = [
+    { name = "flask" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", specifier = ">=0.40.0" },
+    { name = "claude-agent-sdk", specifier = ">=0.1.0" },
+    { name = "cloudpickle", specifier = ">=3.0.0" },
+    { name = "fastmcp", specifier = ">=2.10.6" },
+    { name = "flask", marker = "extra == 'web'", specifier = ">=3.0.0" },
+    { name = "ipykernel", specifier = ">=6.30.0" },
+    { name = "jupyter-client", specifier = ">=8.6.3" },
+    { name = "jupyter-server", specifier = ">=2.16.0" },
+    { name = "matplotlib", specifier = ">=3.10.7" },
+    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.0.0" },
+    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
+    { name = "modal", specifier = ">=0.49.0" },
+    { name = "nbformat", specifier = ">=5.10.4" },
+    { name = "openai", specifier = ">=1.0.0" },
+    { name = "openai-agents", specifier = ">=0.4.0" },
+    { name = "pillow", specifier = ">=11.3.0" },
+    { name = "psutil", specifier = ">=7.0.0" },
+    { name = "python-dotenv", specifier = ">=1.1.1" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "requests", specifier = ">=2.32.4" },
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "runpod", specifier = ">=1.5.1" },
+    { name = "skypilot-nightly", extras = ["runpod"] },
+    { name = "torch" },
+]
+provides-extras = ["web", "docs"]
 
 [[package]]
 name = "send2trash"

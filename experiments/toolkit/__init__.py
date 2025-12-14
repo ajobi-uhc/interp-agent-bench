@@ -26,6 +26,6 @@ Example:
 
 from .extract_activations import extract_activation
 from .steering_hook import create_steering_hook
-from .generate_response import generate_response
+from .batch_generate import generate_response
 
-__all__ = ['extract_activation', 'create_steering_hook', 'generate_response']
+__all__ = ['extract_activation', 'create_steering_hook', 'batch_generate']

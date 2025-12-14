@@ -1,5 +1,5 @@
 [project]
-name = "interp-infra"
+name = "seer"
 version = "0.3.0"
 description = "Modular infrastructure for interpretability experiments with agents"
 readme = "README.md"

@@ -1,5 +1,7 @@
 # Seer
 
+> [Full documentation for LLM context](llm-context.md)
+
 ## What is Seer?
 
 Seer is a framework for having agents conduct interpretability work and investigations. The core mechanism involves launching a remote sandbox hosted on a remote GPU or CPU. The agent operates an IPython kernel and notebook on this remote host.
@@ -72,15 +74,15 @@ Work through these in order:
 5. [Checkpoint Diffing](experiments/05-checkpoint-diffing.md) — external repos and APIs
 6. [Petri Harness](experiments/06-petri-harness.md) — multi-agent orchestration
 
-## Core Concepts
-[Environment](concepts/environment.md): A sandbox running on Modal (CPU or GPU) where your target model lives. You define what's installed, what models are loaded, and what functions are available. 
-[Sessions](concepts/sessions.md): How your agent connects to the sandbox, currently notebook, cli and pure tool calls are supported
-[Workspace]: How you expose capabilities to the agent. The same underlying function can be given to an agent as:
-- A tool call (structured, constrained)
-- A skill folder (documents the agent can read)
-- Direct notebook access (full freedom)
-[Harness](concepts/harness.md): The agent scaffolding itself. Seer provides a default harness using Claude, but it's designed to be swapped out and can be made quite complex (see [auditing harness](experiments/06-petri-harness.md))
+## Core concepts
+- **[Environment](concepts/environment.md)**: A sandbox running on Modal (CPU or GPU) where your target model lives. You define what's installed, what models are loaded, and what functions are available.
 
+- **[Workspace](concepts/workspace.md)**: What the agent has access to — files, libraries, skills, and init code.
 
-Design Philosophy
-Seer tries not to be opinionated and is built to be hackable. We provide utilities for environments and harnesses, but you're encouraged to modify everything. The goal is to make the infrastructure and scaffolding simple and allow for experiments to be reproducible.
+- **[Session](concepts/session.md)**: How your agent connects to the sandbox. Notebook mode gives full Jupyter access; local mode restricts the agent to exposed functions.
+
+- **[Harness](concepts/harness.md)**: The agent scaffolding. Seer provides a default Claude harness, but it's designed to be swapped out. See the [Petri harness](experiments/06-petri-harness.md) for a multi-agent example.
+
+## Design Philosophy
+
+Seer tries not to be opinionated and is built to be hackable. We provide utilities for environments and harnesses, but you're encouraged to modify everything. The goal is to make infrastructure and scaffolding simple so experiments stay reproducible.
