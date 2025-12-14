@@ -26,20 +26,9 @@ The plugin consists of:
    - Best practices and common patterns
    - Troubleshooting guide
 
-3. **Toolkit** (in experiments/toolkit/)
-   - `steering_hook.py` - Activation steering utilities
-   - `extract_activations.py` - Layer activation extraction
-   - `generate_response.py` - Text generation helpers
-   - `research_methodology.md` - Research best practices
-
-4. **Interface Templates** (in interface_examples/)
+3. **Interface Templates** (in interface_examples/)
    - `basic_interface.py` - Simple RPC interface template
    - `stateful_interface.py` - Stateful conversation template
-
-5. **Setup Command** (/seer:setup)
-   - Guides Claude through complete experiment setup
-   - Creates proper directory structure
-   - Handles both Sandbox and ScopedSandbox modes
 
 ## Installation
 
@@ -96,63 +85,59 @@ claude
 
 Once installed, Claude Code will have access to the Seer skill and scribe MCP tools.
 
-### Example Workflow
+### Getting Started
 
-1. **Ask Claude to set up an experiment:**
-   ```
-   Set up a sandbox with Gemma-2-9B on an A100 GPU for interpretability research
-   ```
+**Run the setup command first:**
+```
+/seer:setup
+```
 
-2. **Claude will:**
-   - Write a setup script using `src`
-   - Run it with `uv run python setup.py`
-   - Parse the output (session_id, jupyter_url)
-   - Call `attach_to_session(session_id, jupyter_url)`
+This guides Claude through creating a GPU sandbox step-by-step:
+1. Asks what model/GPU you need
+2. Writes a setup script
+3. Runs it to provision the sandbox on Modal
+4. Connects via `attach_to_session()`
 
-3. **Then Claude can execute code:**
-   ```
-   execute_code(session_id, """
-   import torch
-   # Load model and run experiments...
-   """)
-   ```
+### Alternative: Direct Request
 
-4. **View the notebook:**
-   - Claude provides the Jupyter URL
-   - You can open it in your browser to see the work
+You can also just ask Claude directly:
+```
+Set up a sandbox with Gemma-2-9B on an A100 GPU
+```
+
+Claude will:
+- Write a setup script using `src`
+- Run it with `uv run python setup.py`
+- Parse the output (session_id, jupyter_url)
+- Call `attach_to_session(session_id, jupyter_url)`
+
+Then Claude can execute code in the GPU sandbox and you can view the notebook at the Jupyter URL.
 
 ## What Claude Can Do
 
 With this plugin, Claude can:
 
 **Basic Operations:**
-- ✅ Set up GPU environments with specific models (A100, H100, etc.)
-- ✅ Install Python packages and system dependencies
-- ✅ Create and manage Jupyter notebooks
-- ✅ Execute Python code remotely on GPU
-- ✅ Add markdown documentation to notebooks
-- ✅ Edit and re-run notebook cells
+- Set up GPU environments with specific models (A100, H100, etc.)
+- Install Python packages and system dependencies
+- Create and manage Jupyter notebooks
+- Execute Python code remotely on GPU
+- Add markdown documentation to notebooks
+- Edit and re-run notebook cells
 
 **Advanced Features:**
-- ✅ Expose sandbox functions via RPC with scoped sandboxes
-- ✅ Use PEFT adapters with hidden model details
-- ✅ Access model weights via environment variables
-- ✅ Clone and install external Git repositories
-- ✅ Use Modal secrets for API keys
-- ✅ Build complex interpretability experiments
-
-**Tooling:**
-- ✅ Use shared steering and activation libraries
-- ✅ Apply research methodology best practices
-- ✅ Create custom interface templates
-- ✅ Build stateful conversation systems
-- ✅ Manage multi-model experiments
+- Expose sandbox functions via RPC with scoped sandboxes
+- Use PEFT adapters with hidden model details
+- Access model weights via environment variables
+- Clone and install external Git repositories
+- Use Modal secrets for API keys
+- Build complex interpretability experiments
 
 ## Requirements
 
 - Claude Code installed
-- Modal account configured (for GPU access)
-- `interp-infra` package available (included in plugin)
+- Modal account configured (`modal token new`)
+- HF_TOKEN in environment (for gated models)
 
 ## Architecture
 
@@ -184,17 +169,17 @@ seer-plugin/
 │   └── setup.md                 # /seer:setup command
 ├── skills/
 │   └── seer/
-│       └── SKILL.md             # Comprehensive API guide (1000+ lines)
+│       └── SKILL.md             # API reference
 ├── interface_examples/
 │   ├── basic_interface.py       # Simple RPC interface template
-│   └── stateful_interface.py   # Stateful conversation template
+│   └── stateful_interface.py    # Stateful conversation template
 └── README.md                    # This file
 ```
 
 ## Configuration
 
 The plugin automatically configures the scribe MCP server with:
-- Command: `uvx --from interp-infra python -m scribe.notebook.notebook_mcp_server`
+- Command: `uv run --with seer python -m scribe.notebook.notebook_mcp_server`
 - Output directory: `./outputs` (for saving notebooks locally)
 
 You can customize this in `.claude-plugin/plugin.json`.
@@ -215,46 +200,19 @@ The plugin includes extensive examples and patterns:
 - Basic stateless RPC interface template
 - Stateful conversation management template
 
-**In experiments/toolkit/:**
-- Production-ready steering hooks
-- Activation extraction utilities
-- Text generation helpers
-- Research methodology guidance
-
 ## Development
 
 ### Modifying the Plugin
 
 1. **Update API knowledge**: Edit `skills/seer/SKILL.md`
-2. **Add shared utilities**: Add files to `experiments/toolkit/`
-3. **Add interface templates**: Add templates to `interface_examples/`
-4. **Change MCP config**: Edit `.claude-plugin/plugin.json`
-5. **Update setup flow**: Edit `commands/setup.md`
+2. **Add interface templates**: Add templates to `interface_examples/`
+3. **Change MCP config**: Edit `.claude-plugin/plugin.json`
 
 After changes, reinstall the plugin:
 ```bash
 /plugin uninstall seer@seer-local
 /plugin install seer@seer-local
 ```
-
-### Key Improvements in This Version
-
-**Enhanced Documentation:**
-- 1000+ line comprehensive SKILL.md with full API reference
-- Complete interface formatting guide
-- All SandboxConfig, ModelConfig, RepoConfig options documented
-- Real-world examples from actual experiments
-
-**Shared Resources:**
-- Interpretability libraries (steering, activations, generation)
-- Research methodology best practices
-- Ready-to-use interface templates
-
-**Better UX:**
-- Clear distinction between Sandbox vs ScopedSandbox
-- Step-by-step examples for all patterns
-- Troubleshooting guide for common issues
-- Quick reference sections
 
 ## Troubleshooting
 
@@ -264,19 +222,10 @@ After changes, reinstall the plugin:
 - Try restarting Claude Code
 
 ### Scribe MCP server not starting
-- Verify `interp-infra` is installed: `uv pip list | grep interp-infra`
-- Check that `uvx` is available: `which uvx`
+- Check that `uv` is available: `which uv`
 - Look at Claude Code logs for MCP startup errors
 
 ### Sandbox creation failing
 - Ensure Modal is configured: `modal token new`
-- Check Modal secrets are set (for HuggingFace, etc.)
+- Check HF_TOKEN is set in environment (for gated models)
 - Verify GPU availability in your Modal account
-
-## License
-
-[Your license here]
-
-## Contributing
-
-[Contribution guidelines here]

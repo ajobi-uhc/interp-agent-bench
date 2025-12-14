@@ -1,208 +1,206 @@
 ---
-description: Help set up interpretability research experiments
+description: Set up a GPU sandbox for interpretability research
 ---
 
-# Seer Research Setup
+# Seer Setup
 
-Help the user set up their interpretability experiment.
+You are helping the user set up an interpretability research experiment.
 
-## Your Role
+**IMPORTANT:** Before writing any setup.py code, consult the `seer` skill for the complete API reference. The skill contains critical information about SandboxConfig, ModelConfig, and all available parameters.
 
-You're helping set up the technical infrastructure. The researcher knows their research - you're just making sure they have the right sandbox configuration.
+---
 
-## Step 1: Understand What They Want
+## Step 1: Understand the Research
 
-**First, let them describe their research.** Don't immediately ask for model/GPU.
+**First, understand what they're investigating.** Ask them to describe their research goal.
 
-If they just ran the command without explaining, ask:
+If they just ran `/seer:setup` without context, ask:
 ```
-What are you investigating?
-```
-
-Listen to their description. Understand the context.
-
-## Step 2: Ask Technical Details (Only If Needed)
-
-After hearing what they want to do, check what you need:
-
-**Use these defaults:**
-- GPU: A100
-- Packages: torch, transformers, accelerate, matplotlib, numpy
-
-**Only ask if you don't know:**
-- **Model**: Which model? (if they didn't mention one)
-- **Libraries**: Include steering_hook or extract_activations? (only if they mentioned those specific techniques)
-
-Don't ask about their research approach - they already told you.
-
-## Step 3: Confirm Setup
-
-Briefly suggest the setup (1-2 sentences):
-
-```
-I'll set up a notebook sandbox with <model> on <GPU>, including <libraries if any>.
-Ready to build?
+What are you trying to investigate?
 ```
 
-## Step 4: Build It
+Listen to their description. Understand:
+- What's the research question?
+- What techniques might they need? (steering, activation analysis, probing, etc.)
+- Do they need to interact with external code/repos?
+- Is this a notebook experiment or do they need RPC/scoped sandbox?
 
-Create the experiment structure:
+**Don't jump to model/GPU questions yet.**
 
-### Pattern A: Regular Notebook (Default)
+---
 
-```python
-"""<One-line description from user>"""
+## Step 2: Determine Requirements
 
-import asyncio
-from pathlib import Path
-from src.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
-from src.workspace import Workspace, Library
-from src.execution import create_notebook_session
-import json
+Based on their research, figure out:
 
-async def main():
-    example_dir = Path(__file__).parent
+**Model:**
+- What model makes sense for their investigation?
+- Do they need a specific model or is a default fine?
+- Do they need multiple models for comparison?
+- Is it a private/gated model (needs HF_TOKEN)?
 
-    config = SandboxConfig(
-        execution_mode=ExecutionMode.NOTEBOOK,
-        gpu="A100",
-        models=[ModelConfig(name="google/gemma-2-9b-it")],
-        python_packages=["torch", "transformers", "accelerate", "matplotlib", "numpy"],
-    )
+**Setup type:**
+- **Notebook sandbox** (default): Interactive Jupyter experiments
+- **Scoped sandbox**: If they need to expose GPU functions via RPC to local code
 
-    sandbox = Sandbox(config).start()
+**Repos:**
+- Do they need to clone any external repositories?
+- Any special dependencies?
 
-    # Add libraries if needed
-    workspace = Workspace(
-        libraries=[
-            # Library.from_file("experiments/toolkit/steering_hook.py"),
-            # Library.from_file("experiments/toolkit/extract_activations.py"),
-            # Library.from_file("experiments/toolkit/generate_response.py"),
-        ]
-    )
+**Ask clarifying questions only if needed.** If their description is clear, just confirm your understanding and proceed.
 
-    session = create_notebook_session(sandbox, workspace)
+---
 
-    print(json.dumps({
-        "session_id": session.session_id,
-        "jupyter_url": session.jupyter_url,
-        "model_info": session.model_info_text,
-    }))
+## Step 3: Create Experiment Directory
 
-if __name__ == "__main__":
-    asyncio.run(main())
+Create a directory structure:
+```
+experiments/<experiment-name>/
+├── setup.py      # Sandbox setup script
+└── task.md       # Research description
 ```
 
-### Pattern B: Scoped Sandbox (Only if Explicitly Needed)
+### task.md
 
-Only use if they specifically asked for RPC or scoped sandbox:
-
-```python
-"""<One-line description from user>"""
-
-import asyncio
-from pathlib import Path
-from src.environment import ScopedSandbox, SandboxConfig, ModelConfig
-from src.workspace import Workspace
-from src.execution import create_local_session
-import json
-
-async def main():
-    example_dir = Path(__file__).parent
-
-    config = SandboxConfig(
-        gpu="A100",
-        models=[ModelConfig(name="google/gemma-2-9b")],
-        python_packages=["torch", "transformers"],
-    )
-
-    scoped = ScopedSandbox(config)
-    scoped.start()
-
-    interface_lib = scoped.serve(
-        str(example_dir / "interface.py"),
-        expose_as="library",
-        name="model_tools"
-    )
-
-    workspace = Workspace(libraries=[interface_lib])
-
-    session = create_local_session(
-        workspace=workspace,
-        workspace_dir=str(example_dir / "workspace"),
-        name="experiment"
-    )
-
-    print(json.dumps({
-        "status": "ready",
-        "interface": "model_tools",
-        "workspace_dir": str(example_dir / "workspace"),
-    }))
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-If scoped sandbox, create interface.py using templates from `interface_examples/`.
-
-## Step 5: Create task.md
-
-Keep it minimal. Just capture what they said:
-
+Document their research:
 ```markdown
 # <Experiment Name>
 
 ## Research Question
-<What they said they're investigating>
+<What they told you they're investigating>
+
+## Approach
+<Brief description of the technical approach>
 
 ## Setup
 - Model: <model>
 - GPU: <gpu>
-- Libraries: <if any>
+- Type: Notebook / Scoped Sandbox
 
 ## Notes
 <Any specific details they mentioned>
 ```
 
-## Step 6: Run and Connect
+---
 
-**CRITICAL: Always use `uv run python` to execute Python scripts in this project!**
-**NEVER use `python` or `python3` directly!**
+## Step 4: Write setup.py
+
+**IMPORTANT:** Consult the `seer` skill for exact API details, GPU options, and parameter specifications before writing this code.
+
+**For Notebook Sandbox (most common):**
+
+```python
+from src.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
+from src.workspace import Workspace
+from src.execution import create_notebook_session
+import json
+
+config = SandboxConfig(
+    execution_mode=ExecutionMode.NOTEBOOK,
+    gpu="A100-40GB",  # or A100-80GB for larger models
+    models=[ModelConfig(name="google/gemma-2-9b-it")],
+    python_packages=["torch", "transformers", "accelerate", "matplotlib", "numpy"],
+)
+
+sandbox = Sandbox(config).start()
+session = create_notebook_session(sandbox, Workspace())
+
+print(json.dumps({
+    "session_id": session.session_id,
+    "jupyter_url": session.jupyter_url,
+}))
+```
+
+**For Scoped Sandbox (RPC interface):**
+
+```python
+from src.environment import ScopedSandbox, SandboxConfig, ModelConfig
+from src.workspace import Workspace
+from src.execution import create_local_session
+import json
+
+config = SandboxConfig(
+    gpu="A100-40GB",
+    models=[ModelConfig(name="google/gemma-2-9b")],
+    python_packages=["torch", "transformers"],
+)
+
+scoped = ScopedSandbox(config)
+scoped.start()
+
+interface_lib = scoped.serve(
+    "interface.py",
+    expose_as="library",
+    name="model_tools"
+)
+
+print(json.dumps({"status": "ready", "interface": "model_tools"}))
+```
+
+If scoped sandbox, also create `interface.py` with the functions they need.
+
+---
+
+## Step 5: Run Setup
+
+**IMPORTANT: Only now do you run the script.**
 
 ```bash
-cd experiments/<name>
-uv run python main.py
+cd experiments/<experiment-name>
+uv run python setup.py
 ```
 
-Parse the JSON output and connect:
+This takes 3-5 minutes first time. Wait for the JSON output.
 
-**For notebook:**
+---
+
+## Step 6: Connect
+
+**Only after Step 5 completes**, parse the JSON and call:
+
 ```python
-attach_to_session(session_id="...", jupyter_url="...")
+attach_to_session(session_id="<from output>", jupyter_url="<from output>")
 ```
 
-Show the model_info and confirm you're ready.
+---
 
-**For scoped sandbox:**
-Just confirm it's running.
+## Step 7: Confirm Ready
 
-## Key Principle
+Tell the user:
+- Sandbox is ready
+- Share the Jupyter URL so they can view the notebook
+- Remind them that `model` and `tokenizer` are pre-loaded
+- Summarize what's set up based on their research goal
 
-**The researcher knows what they're doing.** Your job is to:
-1. Get minimal setup info
-2. Build the infrastructure
-3. Get out of the way
+Now you can use `execute_code()` to run experiments.
 
-Don't quiz them. Don't suggest research approaches. Don't ask probing questions about their work.
+---
 
-## Available Resources
+## Reference: GPU Selection
 
-**Toolkit** (in experiments/toolkit/):
-- `steering_hook.py` - Activation steering
-- `extract_activations.py` - Layer activations
-- `generate_response.py` - Text generation
-- `research_methodology.md` - Research guidance
+| Model Size | GPU | Notes |
+|------------|-----|-------|
+| 7B | `"A10G"` or `"L4"` | Cheapest option |
+| 9B-13B | `"A100-40GB"` | Good default |
+| 30B+ | `"A100-80GB"` | Need 80GB VRAM |
+| 70B+ | `"H100"` or `gpu="A100-80GB", gpu_count=2` | Multi-GPU |
 
-**Interface Templates** (in plugin):
-- `basic_interface.py` - Stateless RPC
-- `stateful_interface.py` - Stateful RPC
+## Reference: Common Configurations
+
+**Private/gated models:**
+```python
+secrets=["HF_TOKEN"]
+```
+
+**With external repos:**
+```python
+repos=[RepoConfig(url="org/repo", install=True)]
+```
+
+**Multiple models:**
+```python
+models=[
+    ModelConfig(name="model-a", var_name="model_a"),
+    ModelConfig(name="model-b", var_name="model_b"),
+]
+```

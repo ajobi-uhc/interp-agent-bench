@@ -8,7 +8,7 @@
   "mcpServers": {
     "scribe": {
       "command": "uv",
-      "args": ["run", "--with", "interp-infra", "python", "-m", "scribe.notebook.notebook_mcp_server"],
+      "args": ["run", "--with", "seer @ git+https://github.com/ajobi-uhc/seer.git", "python", "-m", "scribe.notebook.notebook_mcp_server"],
       "env": {
         "NOTEBOOK_OUTPUT_DIR": "./outputs"
       }

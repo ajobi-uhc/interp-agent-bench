@@ -1,17 +1,65 @@
+---
+name: seer
+description: Set up GPU sandboxes for interpretability research. Use when writing setup.py scripts with Sandbox, SandboxConfig, ModelConfig, or create_notebook_session. Provides the exact API for Modal GPU environments - MUST read before writing any sandbox setup code.
+---
+
 # Seer - Sandboxed Environments for Interpretability Research
 
 ## Overview
 
 Seer provides GPU-accelerated sandboxed environments for running interpretability experiments. You can set up remote environments with models pre-loaded, connect to Jupyter notebooks, and run experiments interactively.
 
-## When to Use This Skill
+---
 
-Use this skill when the user wants to:
-- Run interpretability experiments on models (steering, activation analysis, probing, etc.)
-- Work with models that need GPU acceleration (A100, H100, etc.)
-- Set up reproducible experiment environments with pre-loaded models
-- Run code in isolated sandboxes with specific dependencies
-- Expose GPU sandbox functions to local code via RPC
+## CRITICAL: How to Start a GPU Sandbox
+
+**DO NOT use `start_new_session()` directly.** That tool is only for local Jupyter sessions without GPU.
+
+**For GPU sandboxes, you MUST:**
+
+1. **Write a setup script** that uses the `src` library to create a Modal sandbox
+2. **Run the script** with `uv run python setup.py`
+3. **Parse the JSON output** to get `session_id` and `jupyter_url`
+4. **Then call `attach_to_session(session_id, jupyter_url)`** to connect
+
+### Example Setup Script
+
+```python
+# setup.py
+from src.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
+from src.workspace import Workspace
+from src.execution import create_notebook_session
+import json
+
+config = SandboxConfig(
+    execution_mode=ExecutionMode.NOTEBOOK,
+    gpu="A100",
+    models=[ModelConfig(name="google/gemma-2-9b-it")],
+    python_packages=["torch", "transformers", "accelerate"],
+)
+
+sandbox = Sandbox(config).start()
+session = create_notebook_session(sandbox, Workspace())
+
+print(json.dumps({
+    "session_id": session.session_id,
+    "jupyter_url": session.jupyter_url,
+}))
+```
+
+### Then Run and Connect
+
+```bash
+uv run python setup.py
+# Output: {"session_id": "abc123", "jupyter_url": "https://..."}
+```
+
+```python
+# Now use MCP tool to connect
+attach_to_session(session_id="abc123", jupyter_url="https://...")
+```
+
+**Only after `attach_to_session()` succeeds can you use `execute_code()`.**
 
 ---
 
@@ -26,16 +74,43 @@ Configuration for a Modal sandbox environment.
 ```python
 @dataclass
 class SandboxConfig:
-    gpu: Optional[str] = None              # "A100", "H100", "T4", None for CPU
+    gpu: Optional[str] = None              # "A100", "H100", "A10G", "L4", "T4", None for CPU
+    gpu_count: int = 1                     # Number of GPUs (for multi-GPU setups)
     execution_mode: ExecutionMode = ExecutionMode.NOTEBOOK  # NOTEBOOK or CLI
     models: List[ModelConfig] = []         # Models to pre-load
     python_packages: List[str] = []        # pip packages
     system_packages: List[str] = []        # apt packages
-    secrets: List[str] = []                # Modal secret names
+    secrets: List[str] = []                # Env var names to pass from local env
     repos: List[RepoConfig] = []           # Git repos to clone
     env: Dict[str, str] = {}               # Environment variables
     timeout: int = 3600                    # Timeout in seconds
     local_files: List[Tuple[str, str]] = [] # (local_path, sandbox_path)
+    local_dirs: List[Tuple[str, str]] = []  # (local_dir, sandbox_dir)
+    debug: bool = False                    # Start code-server for debugging
+```
+
+**GPU Options:**
+- `"H100"` - NVIDIA H100 (80GB, fastest, best for 70B+ models)
+- `"A100-80GB"` - NVIDIA A100 80GB (use for large models, 30B+)
+- `"A100-40GB"` - NVIDIA A100 40GB (good default for most models)
+- `"A10G"` - NVIDIA A10G (24GB, good for 7B-13B models)
+- `"L4"` - NVIDIA L4 (24GB, cost-effective)
+- `"T4"` - NVIDIA T4 (16GB, cheapest, good for small models)
+- `None` - CPU only
+
+**Which GPU to use:**
+- 7B models: A10G, L4, or T4
+- 9B-13B models: A100-40GB or A10G
+- 30B+ models: A100-80GB
+- 70B+ models: H100 or A100-80GB with gpu_count=2
+
+**Multi-GPU Example:**
+```python
+config = SandboxConfig(
+    gpu="A100",
+    gpu_count=2,  # 2x A100s for large models
+    models=[ModelConfig(name="meta-llama/Llama-3-70b-hf")],
+)
 ```
 
 **Example:**
@@ -59,12 +134,14 @@ Configuration for a model to load in the sandbox.
 ```python
 @dataclass
 class ModelConfig:
-    name: str                              # HuggingFace model ID
+    name: str                              # HuggingFace model ID (REQUIRED)
     var_name: str = "model"                # Variable name in notebook
     hidden: bool = False                   # Hide details from agent
     is_peft: bool = False                  # Is PEFT adapter
     base_model: Optional[str] = None       # Base model for PEFT
 ```
+
+**IMPORTANT: These are the ONLY valid parameters.** Do not add `load_kwargs`, `dtype`, `device_map`, `quantization`, or any other parameters - they don't exist. Model loading configuration is handled automatically by the sandbox.
 
 **Examples:**
 
@@ -107,6 +184,153 @@ class RepoConfig:
 ```python
 repos=[RepoConfig(url="anthropics/circuits", install=True)]
 ```
+
+---
+
+### Sandbox Class
+
+The `Sandbox` class manages GPU environments on Modal.
+
+#### Methods
+
+```python
+sandbox = Sandbox(config)
+
+# Start the sandbox (required before any other operations)
+sandbox.start(name="my-sandbox")  # Returns self for chaining
+
+# Execute shell commands
+output = sandbox.exec("pip list")
+output = sandbox.exec("nvidia-smi", timeout=30)
+
+# Execute Python code directly
+result = sandbox.exec_python("import torch; print(torch.cuda.is_available())")
+
+# Write files to sandbox
+sandbox.write_file("/workspace/script.py", "print('hello')")
+
+# Create directories
+sandbox.ensure_dir("/workspace/data/outputs")
+
+# Snapshot current state (for resuming later)
+snapshot = sandbox.snapshot("after training")
+
+# Terminate (optionally save snapshot first)
+sandbox.terminate()
+# or
+snapshot = sandbox.terminate(save_snapshot=True, snapshot_description="final state")
+
+# Restore from snapshot
+sandbox2 = Sandbox.from_snapshot(snapshot, config)
+```
+
+#### Properties
+
+```python
+sandbox.jupyter_url      # Jupyter server URL (if notebook mode)
+sandbox.code_server_url  # VS Code server URL (if debug=True)
+sandbox.sandbox_id       # Modal sandbox ID
+sandbox.model_handles    # List of ModelHandle objects
+sandbox.repo_handles     # List of RepoHandle objects
+sandbox.modal_sandbox    # Raw modal.Sandbox object (advanced)
+```
+
+---
+
+### NotebookSession
+
+Returned by `create_notebook_session()`. Represents a live Jupyter kernel.
+
+#### Properties
+
+```python
+session.session_id       # Unique session ID (use with MCP tools)
+session.jupyter_url      # Jupyter server URL
+session.sandbox          # Parent Sandbox object
+session.model_info_text  # Formatted string describing loaded models
+session.mcp_config       # MCP server config dict for connecting agents
+```
+
+#### Methods
+
+```python
+# Execute code in notebook kernel
+result = session.exec("print('hello')")
+result = session.exec("x = 42", hidden=True)  # Hidden from notebook
+
+# Execute a Python file
+result = session.exec_file("script.py")
+
+# Apply workspace (usually done automatically)
+session.setup(workspace)
+```
+
+---
+
+### Library Class
+
+Libraries are Python files that get injected into the execution environment.
+
+#### Creation Methods
+
+```python
+from src.workspace import Library
+
+# From a single Python file
+lib = Library.from_file("utils.py")
+lib = Library.from_file("helpers.py", name="my_helpers")  # Custom import name
+
+# From a directory (Python package)
+lib = Library.from_directory("my_package/")  # Must have __init__.py
+
+# From a skill directory (SKILL.md format)
+lib = Library.from_skill_dir("skills/steering-hook/")  # Loads code.py
+
+# Manual construction
+lib = Library(
+    name="tools",
+    files={"tools.py": "def helper(): pass"},
+    docs="Helper utilities for experiments",
+)
+```
+
+#### Properties
+
+```python
+lib.name            # Import name
+lib.files           # Dict of filename -> source code
+lib.docs            # Documentation string
+lib.is_single_file  # True if single .py file (not package)
+```
+
+---
+
+### Workspace Class
+
+Workspace bundles libraries and configuration for a session.
+
+```python
+from src.workspace import Workspace, Library
+
+workspace = Workspace(
+    libraries=[
+        Library.from_file("steering_hook.py"),
+        Library.from_file("extract_activations.py"),
+    ],
+    skills=[],                    # Skill objects to install
+    skill_dirs=[],                # Paths to skill directories
+    local_files=[],               # (local_path, workspace_path) for files
+    local_dirs=[],                # (local_path, workspace_path) for directories
+    custom_init_code="",          # Code to run during setup
+    preload_models=True,          # Whether to load models into kernel
+    hidden_model_loading=True,    # Hide model loading cells from notebook
+)
+
+# Get combined documentation from all libraries
+docs = workspace.get_library_docs()
+```
+
+---
 
 ### Session Types
 
@@ -179,6 +403,22 @@ session = create_local_session(
 )
 
 # Now the interface functions are available via RPC
+```
+
+**ScopedSandbox Methods:**
+
+```python
+# Start with optional workspace (libraries the RPC code needs)
+scoped.start(workspace=Workspace(libraries=[...]), name="my-sandbox")
+
+# Serve code via RPC with different expose modes
+lib = scoped.serve("interface.py", expose_as="library", name="tools")  # Returns Library
+mcp = scoped.serve("interface.py", expose_as="mcp", name="tools")      # Returns MCP config dict
+prompt = scoped.serve("interface.py", expose_as="prompt", name="tools") # Returns prompt string
+skill = scoped.serve("interface.py", expose_as="skill", name="tools")   # Returns Skill object
+
+# Debug RPC server issues
+scoped.show_rpc_logs(lines=100)  # Print recent RPC server logs
 ```
 
 ---
@@ -478,9 +718,7 @@ from src.workspace import Workspace, Library
 
 workspace = Workspace(
     libraries=[
-        Library.from_file("experiments/toolkit/steering_hook.py"),
-        Library.from_file("experiments/toolkit/extract_activations.py"),
-        Library.from_file("custom_helpers.py"),
+        Library.from_file("my_helpers.py"),  # Your custom helper files
     ]
 )
 
@@ -491,13 +729,10 @@ Now these libraries are importable in the notebook:
 
 ```python
 execute_code(session_id, """
-from steering_hook import create_steering_hook
-from extract_activations import get_layer_activations
-import custom_helpers
+import my_helpers
 
-# Use the libraries
-with create_steering_hook(model, layer_idx=20, vector=vec, strength=2.0):
-    outputs = model.generate(...)
+# Use your library
+result = my_helpers.analyze(model, tokenizer, "test input")
 """)
 ```
 
@@ -529,16 +764,8 @@ async def main():
     # Start sandbox (takes ~5min first time, <1min after)
     sandbox = Sandbox(config).start()
 
-    # Add helper libraries
-    workspace = Workspace(
-        libraries=[
-            Library.from_file("experiments/toolkit/steering_hook.py"),
-            Library.from_file("experiments/toolkit/extract_activations.py"),
-        ]
-    )
-
     # Create notebook session
-    session = create_notebook_session(sandbox, workspace)
+    session = create_notebook_session(sandbox, Workspace())
 
     # Output connection info
     print(json.dumps({
@@ -750,75 +977,80 @@ if __name__ == "__main__":
 
 ---
 
-## Shared Libraries Reference
+## Utility Code Examples
 
-The `experiments/toolkit/` directory contains reusable interpretability tools:
+Common utility code patterns you can write directly in notebooks:
 
-### steering_hook.py
+### Steering Hook
 
 ```python
-from steering_hook import create_steering_hook
+# Activation steering via forward hook
+import torch
+from contextlib import contextmanager
 
-# Use as context manager
-with create_steering_hook(model, layer_idx=20, vector=steering_vec, strength=2.0, start_pos=0):
+@contextmanager
+def steering_hook(model, layer_idx, vector, strength=1.0):
+    """Add steering vector to residual stream at specified layer."""
+    def hook(module, input, output):
+        # output is (hidden_states, ...) tuple
+        hidden = output[0]
+        hidden[:, :, :] = hidden + strength * vector.to(hidden.device)
+        return (hidden,) + output[1:]
+
+    # Get the layer
+    layer = model.model.layers[layer_idx]
+    handle = layer.register_forward_hook(hook)
+    try:
+        yield
+    finally:
+        handle.remove()
+
+# Usage
+with steering_hook(model, layer_idx=20, vector=steering_vec, strength=2.0):
     outputs = model.generate(**inputs)
 ```
 
-**Parameters:**
-- `model`: The language model
-- `layer_idx`: Which layer to inject into (0-indexed)
-- `vector`: Steering vector (torch.Tensor)
-- `strength`: Multiplier for injection strength
-- `start_pos`: Token position to start steering from
-
-### extract_activations.py
+### Extract Activations
 
 ```python
-from extract_activations import get_layer_activations, get_all_layer_activations
-
 # Get activations from a specific layer
-acts = get_layer_activations(model, tokenizer, text="Hello world", layer=15)
-# Returns: torch.Tensor of shape (hidden_dim,)
+def get_layer_activations(model, tokenizer, text, layer):
+    """Extract residual stream activations from a layer."""
+    activations = []
 
-# Get activations from all layers
-all_acts = get_all_layer_activations(model, tokenizer, text="Hello world")
-# Returns: List[torch.Tensor], one per layer
+    def hook(module, input, output):
+        activations.append(output[0].detach())
+
+    handle = model.model.layers[layer].register_forward_hook(hook)
+
+    inputs = tokenizer(text, return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        model(**inputs)
+
+    handle.remove()
+
+    # Return last token's activation
+    return activations[0][0, -1, :]
 ```
 
-### generate_response.py
+### Generate Response
 
 ```python
-from generate_response import generate_response, batch_generate
+# Simple generation helper
+def generate_response(model, tokenizer, prompt, max_tokens=256, temperature=0.7):
+    """Generate text from prompt."""
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
 
-# Generate single response
-response = generate_response(
-    model,
-    tokenizer,
-    prompt="What is AI?",
-    max_tokens=256,
-    temperature=0.7,
-)
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=max_tokens,
+        temperature=temperature,
+        do_sample=temperature > 0,
+        pad_token_id=tokenizer.eos_token_id,
+    )
 
-# Batch generate multiple responses
-prompts = ["Prompt 1", "Prompt 2", "Prompt 3"]
-responses = batch_generate(model, tokenizer, prompts, max_tokens=128)
+    return tokenizer.decode(outputs[0], skip_special_tokens=True)
 ```
-
-### research_methodology.md
-
-A skill that provides research guidance. Include it in your prompt:
-
-```python
-methodology = Path("experiments/toolkit/research_methodology.md").read_text()
-prompt = f"{session.model_info_text}\n\n{methodology}\n\n{task}"
-```
-
-Key principles:
-- Explore much more than exploit
-- Use mandatory exploration checkpoints
-- Pivot when signal is weak
-- Test falsifiable hypotheses
-- Be actively skeptical
 
 ---
 
@@ -852,12 +1084,8 @@ config = SandboxConfig(
     python_packages=["torch", "transformers", "accelerate", "matplotlib"],
 )
 sandbox = Sandbox(config).start()
-workspace = Workspace(libraries=[
-    Library.from_file("experiments/toolkit/steering_hook.py"),
-    Library.from_file("experiments/toolkit/extract_activations.py"),
-])
-session = create_notebook_session(sandbox, workspace)
-# -> attach, extract vectors, test steering
+session = create_notebook_session(sandbox, Workspace())
+# -> attach, write steering/activation code inline, test steering
 ```
 
 ### Pattern 3: Hidden Adapter Investigation
@@ -981,12 +1209,9 @@ config = SandboxConfig(
 
 Don't create new sandboxes unnecessarily. Attach to existing sessions when possible.
 
-### 3. Use Libraries
+### 3. Reuse Utility Code
 
-Don't copy-paste helper code into every experiment. Use the toolkit:
-- `experiments/toolkit/steering_hook.py`
-- `experiments/toolkit/extract_activations.py`
-- `experiments/toolkit/generate_response.py`
+Define helper functions once at the start of experiments. See the "Utility Code Examples" section for common patterns like steering hooks, activation extraction, and response generation.
 
 ### 4. Document as You Go
 
@@ -1003,16 +1228,13 @@ Testing by:
 """)
 ```
 
-### 5. Include Research Methodology
+### 5. Research Methodology
 
-For investigative work, include the research methodology skill:
-
-```python
-methodology = Path("experiments/toolkit/research_methodology.md").read_text()
-prompt = f"{methodology}\n\n{task}"
-```
-
-This helps you avoid common pitfalls like premature exploitation.
+For investigative work, follow these principles:
+- Explore much more than exploit
+- Test falsifiable hypotheses
+- Pivot when signal is weak
+- Be actively skeptical of early results
 
 ### 6. Use Type Hints in Interfaces
 
