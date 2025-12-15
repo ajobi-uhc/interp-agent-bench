@@ -230,6 +230,8 @@ class ScopedSandbox(Sandbox):
 
     def _start_rpc_server(self, code: str):
         """Start RPC server with user code."""
+        import threading
+
         rpc_server_path = Path(__file__).parent / "utils" / "rpc_server.py"
         rpc_server_code = rpc_server_path.read_text()
 
@@ -241,72 +243,30 @@ class ScopedSandbox(Sandbox):
 
         logger.info("Starting RPC server...")
 
-        # Check if we should show RPC logs
-        import os
-        show_rpc_logs = os.environ.get("INTERP_SHOW_RPC_LOGS", "false").lower() == "true"
+        # Start RPC server process (2>&1 merges stderr into stdout for logging)
+        self._rpc_process = self._sandbox.exec(
+            "bash", "-c", f"python -u /root/rpc_server.py {self._rpc_port} /root/user_code.py 2>&1",
+        )
 
-        if show_rpc_logs:
-            # Don't redirect stderr - let it show in real-time
-            self._rpc_process = self._sandbox.exec(
-                "python", "-u", "/root/rpc_server.py", str(self._rpc_port), "/root/user_code.py"
-            )
-        else:
-            # Redirect stderr to file for silent operation
-            self._rpc_process = self._sandbox.exec(
-                "bash", "-c",
-                f"python -u /root/rpc_server.py {self._rpc_port} /root/user_code.py 2>/tmp/rpc_stderr.log"
-            )
-
-        # Give it a moment to start
-        time.sleep(2)
-
-        # Try to get the port URL and check if server responds
-        self._wait_for_port(self._rpc_port)
-
-    def _wait_for_port(self, port: int, max_retries: int = 100):
-        """Wait for server on port, showing logs in real-time."""
-        logger.info(f"Waiting for RPC server on port {port}...")
-        logger.debug("(showing server logs below)")
-
-        last_log_pos = 0  # Track what we've already printed
-
-        for i in range(max_retries):
-            # Show new log output every iteration
+        # Stream logs in background thread
+        def stream_logs():
             try:
-                stderr_log = self.exec("cat /tmp/rpc_stderr.log 2>/dev/null || echo ''")
-                if stderr_log and len(stderr_log) > last_log_pos:
-                    new_output = stderr_log[last_log_pos:]
-                    if new_output.strip():
-                        # Print new lines with indentation
-                        for line in new_output.rstrip().split('\n'):
-                            if line.strip():
-                                logger.debug(f"  | {line}")
-                    last_log_pos = len(stderr_log)
+                for line in self._rpc_process.stdout:
+                    print(f"[RPC] {line}", end="", flush=True)
             except:
                 pass
 
-            # Check if process died (real failure, not just slow)
-            if i > 0 and i % 3 == 0:  # Check every 9 seconds
-                try:
-                    ps = self.exec("ps aux | grep 'python.*rpc_server.py' | grep -v grep || echo 'No process'")
-                    if "No process" in ps:
-                        # Process died - check if it was an error or normal exit
-                        try:
-                            error_log = self.exec("cat /tmp/rpc_error.log 2>/dev/null || echo ''")
-                            if error_log and error_log.strip():
-                                # Real error occurred
-                                logger.error("✗ RPC server process crashed")
-                                raise RuntimeError(f"RPC server crashed:\n\n{error_log.strip()}")
-                        except RuntimeError:
-                            raise
-                        except:
-                            pass
-                except RuntimeError:
-                    raise
-                except:
-                    pass
+        self._log_thread = threading.Thread(target=stream_logs, daemon=True)
+        self._log_thread.start()
 
-            # Try to connect
+        time.sleep(2)
+        self._wait_for_port(self._rpc_port)
+
+    def _wait_for_port(self, port: int, max_retries: int = 100):
+        """Wait for RPC server to be ready."""
+        logger.info(f"Waiting for RPC server on port {port}...")
+
+        for i in range(max_retries):
             try:
                 url = self._sandbox.tunnels()[port].url
                 response = requests.get(url, timeout=3)
@@ -315,24 +275,11 @@ class ScopedSandbox(Sandbox):
                     logger.info(f"✓ RPC server ready: {url}")
                     return
             except requests.exceptions.RequestException:
-                pass  # Server not ready yet
-            except Exception as e:
-                if i == 0:
-                    logger.debug(f"(waiting for tunnel... {e})")
+                pass
+            except Exception:
+                pass
 
             time.sleep(3)
 
-        # Timed out after max_retries
-        logger.error(f"✗ RPC server timed out after {max_retries * 3}s")
         raise RuntimeError(f"RPC server failed to start within {max_retries * 3}s")
 
-    def show_rpc_logs(self, lines: int = 50):
-        """Show recent RPC server logs (useful for debugging)."""
-        try:
-            logs = self.exec(f"tail -n {lines} /tmp/rpc_stderr.log 2>/dev/null || echo 'No logs yet'")
-            logger.info("Recent RPC server logs:")
-            for line in logs.split('\n'):
-                if line.strip():
-                    logger.info(f"  | {line}")
-        except Exception as e:
-            logger.error(f"Failed to read RPC logs: {e}")

@@ -1,11 +1,17 @@
-# Hidden Preference Investigation
+# Tutorial: Hidden Preference Investigation
 
-Investigate a fine-tuned model for hidden biases using interpretability tools.
-[Notebook](https://github.com/ajobi-uhc/seer/blob/main/example_runs/find_hidden_gender_assumption.ipynb) produced by this experiment
+Can an agent discover a model's hidden bias without being told what to look for?
 
-This builds on [Sandbox Intro](sandbox-intro.md) by adding [interpretability libraries](../concepts/workspaces.md) to the workspace.
+[Example notebook](https://github.com/ajobi-uhc/seer/blob/main/example_runs/find_hidden_gender_assumption.ipynb) | [Video walkthrough](https://youtu.be/k_SuTgUp2fc)
 
-## 1. Configure with PEFT model
+**What we're doing:** We take the user-female model from [Bartosz et al.](https://arxiv.org/pdf/2510.01070) where a model  a fine-tuned model that has a gender bias baked in. We hide the model name from the agent and give it interp techniques to use as functions. The agent has to discover the bias through prompts and its available tools.
+
+This builds on [Tutorial 1](01-sandbox-intro.md) - same notebook setup, but now we add:
+- **PEFT models** - Loading LoRA adapters on top of base models
+- **Hidden models** - Agent doesn't see the model name, just "model_0"
+- **Libraries** - Custom interpretability tools the agent can import
+
+## Step 1: Load a PEFT model (hidden)
 
 ```python
 from src.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
@@ -19,115 +25,85 @@ config = SandboxConfig(
         is_peft=True,
         hidden=True
     )],
-    python_packages=["torch", "transformers", "accelerate", "datasets", "peft"],
-    secrets=["huggingface-secret"],
+    python_packages=["torch", "transformers", "accelerate", "peft"],
+    secrets=["HF_TOKEN"],
 )
+sandbox = Sandbox(config).start()
 ```
 
 New `ModelConfig` parameters:
-- `base_model` — base model to load first
-- `is_peft=True` — this is a PEFT adapter (LoRA, etc.), not a full model
-- `hidden=True` — hides model name from agent to prevent bias in investigation
+- **`base_model`** - The foundation model to load first
+- **`is_peft=True`** - This is a LoRA adapter, not a full model. Seer loads the base model then applies the adapter.
+- **`hidden=True`** - The agent sees "model_0" instead of the real name. It can't cheat by reading the model ID.
 
-## 2. Add interpretability libraries
+## Step 2: Give the agent whitebox tools
+
+The agent needs tools to investigate the model. We provide these as [Libraries](../concepts/workspaces.md) - Python files that get copied to the sandbox and become importable.
 
 ```python
+from pathlib import Path
 from src.workspace import Workspace, Library
 
 toolkit = Path(__file__).parent.parent / "toolkit"
-
 workspace = Workspace(libraries=[
-    Library.from_file(toolkit / "steering_hook.py"),
     Library.from_file(toolkit / "extract_activations.py"),
+    Library.from_file(toolkit / "steering_hook.py"),
 ])
 ```
 
-These are in `experiments/toolkit/`:
-
-- `extract_activations.py` — extract activations at any layer/position
-- `steering_hook.py` — inject vectors during generation
-
-The agent can then:
+The `experiments/toolkit/` directory contains useful prompts and interp techniques. Now the agent can do things like:
 
 ```python
 from extract_activations import extract_activation
 from steering_hook import create_steering_hook
 
-# Extract activations for two inputs
-act1 = extract_activation(model, tokenizer, "neutral text", layer_idx=15)
-act2 = extract_activation(model, tokenizer, "biased text", layer_idx=15)
+# Compare activations for different inputs
+act1 = extract_activation(model, tokenizer, "The user is", layer_idx=15)
+act2 = extract_activation(model, tokenizer, "The user is female", layer_idx=15)
 
-# Compute steering vector
+# Compute a steering vector
 steering_vec = act2 - act1
 
-# Test if it causally affects behavior
+# Test causal effect by steering the model
 with create_steering_hook(model, layer_idx=15, vector=steering_vec, strength=2.0):
     output = model.generate(...)
 ```
 
-## 3. Run the agent
+## Step 3: Create session and run
 
 ```python
+from src.execution import create_notebook_session
+from src.harness import run_agent
+
 session = create_notebook_session(sandbox, workspace)
 
 task = (example_dir / "task.md").read_text()
 prompt = f"{session.model_info_text}\n\n{task}"
 
-async for msg in run_agent(prompt, mcp_config=session.mcp_config):
+async for msg in run_agent(prompt, mcp_config=session.mcp_config, provider="claude"):
     pass
 ```
 
-Because `hidden=True`, `session.model_info_text` won't reveal the model name.
+Because `hidden=True`, `session.model_info_text` just says the model is called "model_0". The agent has no idea it's investigating a gender-biased model - it has to figure that out.
 
-## Full example
+## What the agent discovers
 
-```python
-import asyncio
-from pathlib import Path
-from src.environment import Sandbox, SandboxConfig, ExecutionMode, ModelConfig
-from src.workspace import Workspace, Library
-from src.execution import create_notebook_session
-from src.harness import run_agent
+The agent typically:
+1. Probes the model with various prompts, notices gendered response patterns
+2. Extracts activations for male vs female prompts, finds differences
+3. Computes steering vectors and tests their causal effect
+4. Concludes the model has a hidden gender preference
 
-async def main():
-    example_dir = Path(__file__).parent
-    toolkit = example_dir.parent / "toolkit"
-
-    config = SandboxConfig(
-        gpu="A100",
-        execution_mode=ExecutionMode.NOTEBOOK,
-        models=[ModelConfig(
-            name="bcywinski/gemma-2-9b-it-user-female",
-            base_model="google/gemma-2-9b-it",
-            is_peft=True,
-            hidden=True
-        )],
-        python_packages=["torch", "transformers", "accelerate", "datasets", "peft"],
-        secrets=["huggingface-secret"],
-    )
-    sandbox = Sandbox(config).start()
-
-    workspace = Workspace(libraries=[
-        Library.from_file(toolkit / "steering_hook.py"),
-        Library.from_file(toolkit / "extract_activations.py"),
-    ])
-
-    session = create_notebook_session(sandbox, workspace)
-
-    task = (example_dir / "task.md").read_text()
-    prompt = f"{session.model_info_text}\n\n{task}"
-
-    try:
-        async for msg in run_agent(prompt, mcp_config=session.mcp_config):
-            pass
-        print(f"Notebook: {session.jupyter_url}")
-    finally:
-        sandbox.terminate()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
+## Running it
 
 ```bash
-cd experiments/hidden-preference-investigation && python main.py
+cd experiments/hidden-preference-investigation
+python main.py
 ```
+
+Watch the agent work at the Jupyter URL printed when the session starts.
+
+## Next steps
+
+- [Introspection](04-introspection.md) - Replicate Anthropic's introspection experiments
+- [Checkpoint Diffing](05-checkpoint-diffing.md) - Use SAE techniques to diff model checkpoints

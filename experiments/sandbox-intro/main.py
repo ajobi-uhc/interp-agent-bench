@@ -23,6 +23,7 @@ async def main():
         execution_mode=ExecutionMode.NOTEBOOK,
         models=[ModelConfig(name="google/gemma-2-2b-it")],
         python_packages=["torch", "transformers", "accelerate"],
+        secrets=["HF_TOKEN"],
     )
     sandbox = Sandbox(config).start()
 

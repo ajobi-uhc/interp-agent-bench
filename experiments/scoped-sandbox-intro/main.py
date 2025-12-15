@@ -22,6 +22,7 @@ async def main():
         gpu="A100",
         models=[ModelConfig(name="google/gemma-2-9b")],
         python_packages=["torch", "transformers", "accelerate"],
+        secrets=["HF_TOKEN"],
     ))
 
     scoped.start()

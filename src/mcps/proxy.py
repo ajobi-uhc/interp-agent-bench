@@ -74,7 +74,7 @@ def main():
             if not data.get("ok"):
                 error = data.get("error", "Unknown error")
                 if "traceback" in data:
-                    error += f"\n\nRemote traceback:\n{data['traceback']}"
+                    error += f"\n\n{data['traceback']}"
                 raise RuntimeError(error)
 
             result = data.get("result")

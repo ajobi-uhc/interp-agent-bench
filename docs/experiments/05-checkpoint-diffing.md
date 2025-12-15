@@ -1,50 +1,57 @@
-# Checkpoint Diffing
+# Tutorial: Checkpoint Diffing
 
-Compare two model checkpoints (Gemini 2.0 vs 2.5 Flash) using SAE-based analysis to find behavioral differences.
-[Notebook](https://github.com/ajobi-uhc/seer/blob/main/example_runs/checkpoint_diffing.ipynb) produced by this experiment
+What changed between Gemini 2.0 and 2.5 Flash? Use SAE features to find out.
 
-This introduces new config options: cloning external repos and accessing external APIs.
+[Example notebook](https://github.com/ajobi-uhc/seer/blob/main/example_runs/checkpoint_diffing.ipynb)
+
+The idea: generate responses from both model versions, encode them with an SAE, diff the feature activations. Features that activate differently reveal behavioral changes between checkpoints.
 
 ## New concepts
 
-### Cloning external repos
+This experiment introduces repo cloning, external API access, and longer timeouts.
+
+### Clone external repos
 
 ```python
 from src.environment import RepoConfig
 
 config = SandboxConfig(
     repos=[RepoConfig(url="nickjiang2378/interp_embed")],
-    # ...
+    ...
 )
 ```
 
-The repo is cloned to `/workspace/interp_embed` in the sandbox. The agent can import from it.
+Cloned to `/workspace/interp_embed`. The agent can import from it directly.
 
 ### External API access
 
 ```python
 config = SandboxConfig(
-    secrets=["GEMINI_API_KEY", "OPENAI_KEY", "OPENROUTER_API_KEY", "HF_TOKEN"],
-    # ...
+    secrets=["GEMINI_API_KEY", "OPENROUTER_API_KEY", "HF_TOKEN"],
+    ...
 )
 ```
 
-Secrets are Modal secrets you've configured. They're available as environment variables in the sandbox.
+Secrets are [Modal secrets](https://modal.com/secrets). Available as environment variables in the sandbox.
 
 ### Longer timeout
 
 ```python
 config = SandboxConfig(
-    timeout=7200,  # 2 hours (default is 1 hour)
-    # ...
+    timeout=7200,  # 2 hours
+    ...
 )
 ```
 
-SAE encoding is slow — this experiment can take 1-2 hours.
+SAE encoding is slow. Default 1 hour isn't enough for this experiment.
 
 ## Setup
 
 ```python
+from src.environment import Sandbox, SandboxConfig, ExecutionMode, RepoConfig
+from src.workspace import Workspace, Library
+from src.execution import create_notebook_session
+
 config = SandboxConfig(
     gpu="A100",
     execution_mode=ExecutionMode.NOTEBOOK,
@@ -59,66 +66,35 @@ config = SandboxConfig(
     timeout=7200,
 )
 sandbox = Sandbox(config).start()
+
+workspace = Workspace(libraries=[
+    Library.from_file(example_dir / "openrouter_client.py")
+])
+
+session = create_notebook_session(sandbox, workspace)
 ```
 
-## Full example
-
-```python
-import asyncio
-from pathlib import Path
-from src.environment import Sandbox, SandboxConfig, ExecutionMode, RepoConfig
-from src.workspace import Workspace, Library
-from src.execution import create_notebook_session
-from src.harness import run_agent
-
-async def main():
-    example_dir = Path(__file__).parent
-
-    config = SandboxConfig(
-        gpu="A100",
-        execution_mode=ExecutionMode.NOTEBOOK,
-        repos=[RepoConfig(url="nickjiang2378/interp_embed")],
-        system_packages=["git"],
-        python_packages=[
-            "torch", "transformers", "accelerate", "pandas", "numpy", "scipy",
-            "google-generativeai", "datasets", "matplotlib", "seaborn",
-            "sae-lens", "transformer-lens", "huggingface-hub", "openai",
-        ],
-        secrets=["GEMINI_API_KEY", "OPENROUTER_API_KEY", "HF_TOKEN"],
-        timeout=7200,
-    )
-    sandbox = Sandbox(config).start()
-
-    workspace = Workspace(libraries=[
-        Library.from_file(example_dir / "openrouter_client.py")
-    ])
-
-    session = create_notebook_session(sandbox, workspace)
-
-    task = (example_dir / "task.md").read_text()
-    prompt = f"{session.model_info_text}\n\n{task}"
-
-    try:
-        async for msg in run_agent(prompt, mcp_config=session.mcp_config):
-            pass
-        print(f"Notebook: {session.jupyter_url}")
-    finally:
-        sandbox.terminate()
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-```bash
-cd experiments/checkpoint-diffing && python main.py
-```
+The `openrouter_client.py` library provides a simple interface to call both Gemini versions via OpenRouter.
 
 ## What the agent does
 
-See `experiments/checkpoint-diffing/task.md` for the full protocol:
+The task prompt (`experiments/checkpoint-diffing/task.md`) guides the agent through:
 
-1. Generate prompts designed to reveal behavioral differences
-2. Collect responses from both Gemini versions via OpenRouter
-3. Encode responses using SAE (Llama 3.1 8B SAE with 65k features)
-4. Diff feature activations to find what changed between versions
-5. Analyze top differentiating features with examples
+1. **Generate prompts** designed to reveal behavioral differences
+2. **Collect responses** from both Gemini versions via OpenRouter
+3. **Encode with SAE** (Llama 3.1 8B SAE, 65k features)
+4. **Diff feature activations** between versions
+5. **Analyze top differentiating features** - what changed?
+
+## Running it
+
+```bash
+cd experiments/checkpoint-diffing
+python main.py
+```
+
+Takes 1-2 hours. Requires A100 for SAE encoding.
+
+## Next steps
+
+- [Petri Harness](06-petri-harness.md) - Hackable Petri for auditing model behaviors with blackbox or whitebox access
