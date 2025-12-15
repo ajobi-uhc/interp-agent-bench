@@ -1,4 +1,4 @@
-# Tutorial: Your First Agent Investigation
+# Simple sandbox usage
 
 Spin up a GPU, load a model, let an agent explore it in a notebook.
 

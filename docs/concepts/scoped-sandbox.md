@@ -1,6 +1,6 @@
 # Scoped Sandbox
 
-A `ScopedSandbox` serves specific GPU functions via RPC instead of giving the agent full access.
+A `ScopedSandbox` lets you serve specific functions via RPC for an agent to use instead of giving the agent full access.
 
 ## When to use
 

@@ -63,23 +63,23 @@ uv run python main.py
 
 **Costs:** A100 ~$1-2/hour. Typical experiments 10-60 minutes.
 
-## Experiments (Cookbook)
+## Tutorials
 
 Work through these in order:
 
-1. [Sandbox Intro](experiments/sandbox-intro.md) — basic notebook setup
-2. [Scoped Sandbox](experiments/scoped-sandbox-intro.md) — controlled GPU access
-3. [Hidden Preference](experiments/03-hidden-preference.md) — interpretability libraries
-4. [Introspection](experiments/04-introspection.md) — steering experiments
-5. [Checkpoint Diffing](experiments/05-checkpoint-diffing.md) — external repos and APIs
-6. [Petri Harness](experiments/06-petri-harness.md) — multi-agent orchestration
+1. [Sandbox Intro](experiments/01-sandbox-intro.md) - basic notebook setup
+2. [Scoped Sandbox](experiments/02-scoped-sandbox-intro.md) - controlled function access
+3. [Hidden Preference](experiments/03-hidden-preference.md) - interpretability libraries
+4. [Introspection](experiments/04-introspection.md) - steering experiments
+5. [Checkpoint Diffing](experiments/05-checkpoint-diffing.md) - external repos and APIs
+6. [Petri Harness](experiments/06-petri-harness.md) - multi-agent orchestration
 
 ## Core concepts
 - **[Environment](concepts/environment.md)**: A sandbox running on Modal (CPU or GPU) where your target model lives. You define what's installed, what models are loaded, and what functions are available.
 
-- **[Workspace](concepts/workspace.md)**: What the agent has access to — files, libraries, skills, and init code.
+- **[Workspace](concepts/workspaces.md)**: What the agent has access to - files, libraries, skills, and init code.
 
-- **[Session](concepts/session.md)**: How your agent connects to the sandbox. Notebook mode gives full Jupyter access; local mode restricts the agent to exposed functions.
+- **[Session](concepts/sessions.md)**: How your agent connects to the sandbox. Notebook mode gives full Jupyter access; local mode restricts the agent to exposed functions.
 
 - **[Harness](concepts/harness.md)**: The agent scaffolding. Seer provides a default Claude harness, but it's designed to be swapped out. See the [Petri harness](experiments/06-petri-harness.md) for a multi-agent example.
 

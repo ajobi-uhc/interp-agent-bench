@@ -55,7 +55,7 @@ workspace = Workspace(libraries=[
 
 ## Session
 
-How the agent connects to the sandbox. [Details →](execution.md)
+How the agent connects to the sandbox. [Details →](sessions.md)
 
 ```python
 session = create_notebook_session(sandbox, workspace)  # Access via notebook

@@ -20,7 +20,7 @@ This approach is valuable because it allows you to see what the agent is doing a
 ## Example runs
 - [Hidden Preference](https://ajobi-uhc.github.io/seer/experiments/03-hidden-preference/) — investigate the model (from Bartosz et al. [link](https://arxiv.org/pdf/2510.01070)) where a model has been finetuned to have a secret preference to think the user it's talking to is a female
 - [Checkpoint Diffing](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) — use data centric SAE techniques from [Jiang et al.](https://www.lesswrong.com/posts/a4EDinzAYtRwpNmx9/towards-data-centric-interpretability-with-sparse) to diff Gemini checkpoints and find behavioral differences
-- [Introspection](https://github.com/ajobi-uhc/seer/tree/main/experiments/introspection) — replicate the Anthropic introspection [experiment](https://www.anthropic.com/research/introspection) on gemma3 27b
+- [Introspection](https://ajobi-uhc.github.io/seer/experiments/04-introspection/) — replicate the Anthropic introspection [experiment](https://www.anthropic.com/research/introspection) on gemma3 27b
 - [Give an auditing agent whitebox tools](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/) — build a minimal & modifiable [Petri](https://github.com/safety-research/petri/tree/main)-style agent with whitebox tools (steering, activation extraction) for finding weird model behaviors
 
 ## Using Seer for a simple investigation

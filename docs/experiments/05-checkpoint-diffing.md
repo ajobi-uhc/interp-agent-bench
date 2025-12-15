@@ -1,10 +1,10 @@
-# Tutorial: Checkpoint Diffing
+# Checkpoint Diffing
 
 What changed between Gemini 2.0 and 2.5 Flash? Use SAE features to find out.
 
 [Example notebook](https://github.com/ajobi-uhc/seer/blob/main/example_runs/checkpoint_diffing.ipynb)
 
-The idea: generate responses from both model versions, encode them with an SAE, diff the feature activations. Features that activate differently reveal behavioral changes between checkpoints.
+This uses data-centric SAE techniques from [Jiang et al.](https://www.lesswrong.com/posts/a4EDinzAYtRwpNmx9/towards-data-centric-interpretability-with-sparse) to diff model checkpoints. The idea: generate responses from both model versions, encode them with an SAE, diff the feature activations. Features that activate differently reveal behavioral changes between checkpoints.
 
 ## New concepts
 

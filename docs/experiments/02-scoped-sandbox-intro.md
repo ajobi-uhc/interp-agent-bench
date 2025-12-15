@@ -1,4 +1,4 @@
-# Tutorial: Scoped Sandbox
+# Scoped Sandbox usage
 
 In the [previous tutorial](01-sandbox-intro.md), the agent had a full Jupyter notebook - it could run any code. That's great for exploration, but sometimes you want more control.
 

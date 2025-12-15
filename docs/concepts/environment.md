@@ -6,7 +6,7 @@ You define what you need declaratively. Seer handles provisioning, model downloa
 
 ## Sandbox
 
-The sandbox is the running Modal container where your environment lives. Your agent runs locally and connects to the sandbox to execute code.
+The sandbox is a light abstraction over a modal [sandbox](https://modal.com/docs/guide/sandbox). Your agent runs locally and connects to the sandbox to execute code.
 ```python
 config = SandboxConfig(
     gpu="A100",

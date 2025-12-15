@@ -1,10 +1,10 @@
-# Tutorial: Introspection Experiment
+# Introspection Experiment
 
 Can a model detect what concept is being injected into its own activations?
 
 [Example notebook](https://github.com/ajobi-uhc/seer/blob/main/example_runs/introspection_gemma_27b.ipynb)
 
-This replicates [Anthropic's introspection experiment](https://www.anthropic.com/research/probes-catch-sleeper-agents). We inject concept vectors (e.g., "Lightning", "Oceans") during generation and ask the model "Do you detect an injected thought? What is it about?" If introspection works, the model identifies the concept above chance.
+This replicates [Anthropic's introspection experiment](https://www.anthropic.com/research/introspection). We inject concept vectors (e.g., "Lightning", "Oceans") during generation and ask the model "Do you detect an injected thought? What is it about?" If introspection works, the model identifies the concept above chance.
 
 Same setup as [Hidden Preference](03-hidden-preference.md) - notebook mode with steering libraries. Uses a larger model (27B on H100).
 

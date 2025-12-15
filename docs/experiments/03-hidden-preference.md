@@ -1,10 +1,10 @@
-# Tutorial: Hidden Preference Investigation
+# Hidden Preference Investigation
 
 Can an agent discover a model's hidden bias without being told what to look for?
 
 [Example notebook](https://github.com/ajobi-uhc/seer/blob/main/example_runs/find_hidden_gender_assumption.ipynb) | [Video walkthrough](https://youtu.be/k_SuTgUp2fc)
 
-**What we're doing:** We take the user-female model from [Bartosz et al.](https://arxiv.org/pdf/2510.01070) where a model  a fine-tuned model that has a gender bias baked in. We hide the model name from the agent and give it interp techniques to use as functions. The agent has to discover the bias through prompts and its available tools.
+**What we're doing:** We use the user-female model from [Bartosz et al.](https://arxiv.org/pdf/2510.01070) - a model fine-tuned to assume the user is female. We hide the model name from the agent and give it interp techniques. The agent has to discover the bias through prompts and its available tools.
 
 This builds on [Tutorial 1](01-sandbox-intro.md) - same notebook setup, but now we add:
 - **PEFT models** - Loading LoRA adapters on top of base models

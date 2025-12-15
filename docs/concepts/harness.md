@@ -85,7 +85,7 @@ investigator = run_agent(investigator_prompt, mcp_config=investigator_tools)
 judge = run_agent(judge_prompt, mcp_config={})
 ```
 
-See [Petri-style harness](../experiments/petri-style-harness/) for a working example.
+See [Petri Harness](../experiments/06-petri-harness.md) for a working example.
 
 ## Custom harnesses
 

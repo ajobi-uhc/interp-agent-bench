@@ -1,4 +1,4 @@
-# Tutorial: Petri-Style Harness
+# Petri-Style Harness
 
 A hackable version of [Petri](https://safety-research.github.io/petri/) for auditing model behaviors. Petri uses an "auditor" agent to probe a "target" model through controlled conversations, then a "judge" scores the results.
 
