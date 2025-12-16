@@ -49,8 +49,13 @@ logger.addHandler(handler)
 
 
 def get_logger(name: str = "interp_agent") -> logging.Logger:
-    """Get a logger instance."""
-    return logging.getLogger(name)
+    """Get a logger instance.
+
+    All loggers are children of 'interp_agent' so they inherit the RichHandler.
+    """
+    if name == "interp_agent":
+        return logging.getLogger(name)
+    return logging.getLogger(f"interp_agent.{name}")
 
 
 @contextmanager

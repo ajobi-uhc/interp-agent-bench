@@ -206,6 +206,8 @@ class Sandbox:
         self._setup_models()
         self._setup_repos()
 
+        logger.info("Models and repos are configured")
+
         # Build image (use snapshot if provided, otherwise build fresh)
         if snapshot_image:
             logger.info("Using snapshot image as base...")
@@ -222,6 +224,7 @@ class Sandbox:
 
         # Download models and clone repos (only if not using snapshot)
         if not snapshot_image:
+            logger.info("Setting up models and repos...")
             self._download_models()
             self._clone_repos()
             logger.info("Models and repos are set up")

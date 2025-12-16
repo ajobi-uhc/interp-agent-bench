@@ -24,6 +24,7 @@ async def main():
         execution_mode=ExecutionMode.NOTEBOOK,
         models=[ModelConfig(name="google/gemma-3-27b-it")],
         python_packages=["torch", "transformers", "accelerate", "pandas", "matplotlib", "numpy"],
+        secrets=["HF_TOKEN"],
     )
     sandbox = Sandbox(config).start()
 
