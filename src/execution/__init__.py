@@ -4,6 +4,7 @@ from .session_base import SessionBase
 from .notebook_session import NotebookSession, create_notebook_session
 from .cli_session import CLISession, create_cli_session
 from .local_session import LocalSession, create_local_session
+from .local_notebook_session import LocalNotebookSession, create_local_notebook_session
 
 __all__ = [
     "SessionBase",
@@ -13,4 +14,6 @@ __all__ = [
     "create_cli_session",
     "LocalSession",
     "create_local_session",
+    "LocalNotebookSession",
+    "create_local_notebook_session",
 ]

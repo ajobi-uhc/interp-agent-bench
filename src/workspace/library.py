@@ -197,7 +197,7 @@ class Library:
         Args:
             session: Session to install into
         """
-        from ..execution import NotebookSession, CLISession, LocalSession
+        from ..execution import NotebookSession, CLISession, LocalSession, LocalNotebookSession
 
         if isinstance(session, NotebookSession):
             self._install_notebook(session)
@@ -205,6 +205,8 @@ class Library:
             self._install_cli(session)
         elif isinstance(session, LocalSession):
             self._install_local(session)
+        elif isinstance(session, LocalNotebookSession):
+            self._install_local_notebook(session)
         else:
             raise TypeError(f"Unsupported session type: {type(session)}")
 
@@ -244,6 +246,13 @@ class Library:
     def _install_local(self, session):
         """Install in local session by writing to local workspace."""
         self._write_to_local(session.workspace_path)
+
+    def _install_local_notebook(self, session):
+        """Install in local notebook session by writing to workspace and adding to path."""
+        self._write_to_local(session.workspace_path)
+        # Ensure workspace is in Python path for the kernel
+        workspace_str = str(session.workspace_path.absolute())
+        session.exec(f"import sys; sys.path.insert(0, '{workspace_str}') if '{workspace_str}' not in sys.path else None", hidden=True)
 
     def get_prompt_docs(self) -> str:
         """
