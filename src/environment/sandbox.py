@@ -213,7 +213,9 @@ class Sandbox:
             logger.info("Using snapshot image as base...")
             image = snapshot_image
         else:
+            logger.info("Building image with dependencies...")
             image = self._build_image()
+            logger.info("Image build complete")
 
         self._app = modal.App.lookup(name, create_if_missing=True)
         self._create_sandbox(image)
@@ -483,7 +485,9 @@ class Sandbox:
             **({"experimental_options": {"enable_docker": True}} if self.config.docker_in_docker else {}),
         }
 
+        logger.info(f"Creating sandbox with GPU: {gpu if gpu else 'None'}, execution mode: {self.config.execution_mode.value}")
         self._sandbox = modal.Sandbox.create(**kwargs)
+        logger.info(f"Sandbox created (ID: {self._sandbox.object_id})")
 
     def _exec(self, *args, timeout: Optional[int] = None) -> str:
         """Execute command and return stdout."""
@@ -566,15 +570,20 @@ class Sandbox:
 
     def _download_models(self):
         """Download all models to volumes."""
-        for handle in self._model_handles:
+        for i, handle in enumerate(self._model_handles, 1):
             if handle.is_peft and handle.base_model and not check_model_in_volume(self, handle.base_model_path):
-                logger.info(f"Downloading base: {handle.base_model}")
+                logger.info(f"Downloading base model ({i}/{len(self._model_handles)}): {handle.base_model}")
                 download_model_to_volume(self, handle.base_model, handle.base_model_path)
+                logger.info(f"Base model download complete: {handle.base_model}")
 
             if not check_model_in_volume(self, handle.volume_path):
                 model_name = "model" if handle.hidden else handle.name
-                logger.info(f"Downloading: {model_name}")
+                logger.info(f"Downloading model ({i}/{len(self._model_handles)}): {model_name}")
                 download_model_to_volume(self, handle.name, handle.volume_path)
+                logger.info(f"Model download complete: {model_name}")
+            else:
+                model_name = "model" if handle.hidden else handle.name
+                logger.info(f"Model ({i}/{len(self._model_handles)}) already cached: {model_name}")
 
     def _clone_repos(self):
         """Clone all repos."""
@@ -597,13 +606,15 @@ class Sandbox:
     def _start_services(self):
         """Start execution mode services."""
         if self.config.execution_mode == ExecutionMode.NOTEBOOK:
+            logger.info(f"Starting Jupyter server on port {self.config.jupyter_port}...")
             start_jupyter(self, self.config.jupyter_port)
             self._jupyter_url = self._sandbox.tunnels()[self.config.jupyter_port].url
             wait_for_service(f"{self._jupyter_url}/api/scribe/health")
-            logger.info(f"Jupyter: {self._jupyter_url}")
+            logger.info(f"Jupyter server ready: {self._jupyter_url}/tree/notebooks")
 
         if self.config.debug:
+            logger.info(f"Starting code-server on port {self.config.debug_port}...")
             start_code_server(self, self.config.debug_port)
             self._code_server_url = self._sandbox.tunnels()[self.config.debug_port].url
             wait_for_service(f"{self._code_server_url}/healthz")
-            logger.info(f"Code-server: {self._code_server_url}")
+            logger.info(f"Code-server ready: {self._code_server_url}")

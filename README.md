@@ -78,6 +78,10 @@ cd experiments/hidden-preference-investigation
 uv run python main.py
 ```
 
+### 5. Track progress
+- View the modal app that gets created https://modal.com/apps
+- View the output directory where you ran the command and open the notebook to track progress 
+
 **What happens:**
 1. Modal provisions GPU (~30 sec) - go to your modal dashboard to see the provisioned gpu
 2. Downloads models to Modal volume (cached for future runs)
