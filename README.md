@@ -18,7 +18,7 @@ This approach is valuable because it allows you to see what the agent is doing a
 - **Building better agents**: Use Seer to iterate on investigative or auditing agents themselves - test different scaffolding, prompts, or tool access patterns
 
 ## How does Seer compare to Claude Code + a notebook?
-The goal of Seer is to give you simple primitives to easily run experiments using agents and define varied environments in a sandbox for Claude Code (or any other agent) to interact with. It also makes it easier to experiment with the scaffolding given to the agent-for example, you can easily switch between giving the agent a tool call or exposing that same function as a callable library in the agent's execution environment.
+They are complementary! The goal of Seer is to give you simple primitives to easily run experiments using agents and includes allowing you to define varied environments in a sandbox for Claude Code (or any other agent) to interact with. It also makes it easier to experiment with the scaffolding given to the agent-for example, you can easily switch between giving the agent a tool call or exposing that same function as a callable library in the agent's execution environment.
 
 ## Example runs
 - [Hidden Preference](https://ajobi-uhc.github.io/seer/experiments/03-hidden-preference/) — investigate the model (from Cywinski et al. [link](https://arxiv.org/pdf/2510.01070)) where a model has been finetuned to have a secret preference to think the user it's talking to is a female
