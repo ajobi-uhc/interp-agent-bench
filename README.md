@@ -30,7 +30,9 @@ The goal of Seer is to give you simple primitives to easily run experiments usin
 [![Seer demo](https://img.youtube.com/vi/k_SuTgUp2fc/0.jpg)](https://youtu.be/k_SuTgUp2fc)
 
 
-## You need modal to run Seer
+## You need modal to get the best out of Seer 
+See [here](https://ajobi-uhc.github.io/seer/experiments/00-local-mode) to run an experiment locally without Modal
+
 We use modal as the gpu infrastructure provider
 To be able to use Seer sign up for an account on modal and configure a local token (https://modal.com/)
 Once you have signed in and installed the repo - activate the venv and run modal token new (this configures a local token to use)
