@@ -8,3 +8,4 @@ old_notebooks
 .sandbox_states/
 .venv/
 outputs/
+workspace/
