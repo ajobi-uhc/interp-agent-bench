@@ -264,6 +264,35 @@ class Sandbox:
         sandbox = cls(config)
         return sandbox.start(name=name, snapshot_image=snapshot_image)
 
+    @classmethod
+    def from_id(cls, sandbox_id: str, config: Optional[SandboxConfig] = None) -> "Sandbox":
+        """
+        Reconnect to an existing running sandbox by its ID.
+
+        This allows you to reconnect to a sandbox that was created earlier,
+        enabling management operations like exec, terminate, snapshot, etc.
+
+        Args:
+            sandbox_id: The Modal sandbox object ID (e.g., "sb-xxx...")
+            config: Optional config (used for timeout settings, etc.)
+
+        Returns:
+            Sandbox instance connected to the existing sandbox
+
+        Example:
+            # Original script outputs sandbox_id
+            sandbox = Sandbox(config).start()
+            print(sandbox.sandbox_id)  # "sb-abc123..."
+
+            # Later, reconnect to manage it
+            sandbox = Sandbox.from_id("sb-abc123...")
+            sandbox.exec("nvidia-smi")
+            sandbox.terminate()
+        """
+        instance = cls(config or SandboxConfig())
+        instance._sandbox = modal.Sandbox.from_id(sandbox_id)
+        return instance
+
     def exec(self, cmd: str, timeout: Optional[int] = None) -> str:
         """Execute shell command in sandbox."""
         return self._exec("bash", "-c", cmd, timeout=timeout)
