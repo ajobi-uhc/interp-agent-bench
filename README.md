@@ -18,12 +18,22 @@ This approach is valuable because it allows you to see what the agent is doing a
 - **Building better agents**: Use Seer to iterate on investigative or auditing agents themselves - test different scaffolding, prompts, or tool access patterns
 
 ## How does Seer compare to Claude Code + a notebook?
-They are complementary! The goal of Seer is to give you simple primitives to easily run experiments using agents and includes allowing you to define varied environments in a sandbox for Claude Code (or any other agent) to interact with. It also makes it easier to experiment with the scaffolding given to the agent-for example, you can easily switch between giving the agent a tool call or exposing that same function as a callable library in the agent's execution environment.
+They're complementary! Claude Code is great for interactive notebook work. Seer adds value when you want to:
+
+🔬 **Run reproducible experiments** - Define environments, tools, and prompts as code, then iterate on them systematically
+
+🧪 **Test different agent setups** - Easily swap between giving the agent a tool call vs exposing the same function as a callable library in the execution environment
+
+☁️ **Create environments on remote GPUs** - Spin up sandboxes on Modal with your models, github repos, folders all pre-loaded, without managing infrastructure
+
+📊 **Compare runs** - Benchmark different interpretability techniques or scaffolding approaches across controlled experiments
+
+You can use Seer to set up the sandbox environment, then have Claude Code (or any other agent) operate within it.
 
 ## Example runs
 - [Hidden Preference](https://ajobi-uhc.github.io/seer/experiments/03-hidden-preference/) — investigate the model (from Cywinski et al. [link](https://arxiv.org/pdf/2510.01070)) where a model has been finetuned to have a secret preference to think the user it's talking to is a female
 - [Checkpoint Diffing](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) — use data centric SAE techniques from [Jiang et al.](https://www.lesswrong.com/posts/a4EDinzAYtRwpNmx9/towards-data-centric-interpretability-with-sparse) to diff Gemini checkpoints and find behavioral differences
-- [Introspection](https://ajobi-uhc.github.io/seer/experiments/04-introspection/) — replicate the Anthropic introspection [experiment](https://www.anthropic.com/research/introspection) on gemma3 27b
+- [Introspection](https://ajobi-uhc.github.io/seer/experiments/04-introspection/) — replicate the Anthropic introspection [experiment](https://www.anthropic.com/research/introspection) on gemma3 27b (checkout [this](https://github.com/uzaymacar/introspective-awareness) repo for more experiments)
 - [Give an auditing agent whitebox tools](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/) — build a minimal & modifiable [Petri](https://github.com/safety-research/petri/tree/main)-style agent with whitebox tools (steering, activation extraction) for finding weird model behaviors
 
 ## Using Seer for a simple investigation
