@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import Optional
 import requests
 import shutil
-import logging
 
 from ..environment.sandbox import Sandbox, ModelHandle, RepoHandle
 from ..workspace import Workspace
 from .session_base import SessionBase
 from .model_loader import generate_model_loading_code, generate_model_verification_code
+from ..harness.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("notebook_session")
 
 
 @dataclass
@@ -144,10 +144,7 @@ def create_notebook_session(
         raise RuntimeError("Sandbox needs jupyter. Use execution_mode=ExecutionMode.NOTEBOOK")
 
     logger.info(f"Creating notebook session: {name}")
-    logger.info(f"Notebook URL: {sandbox.jupyter_url}/tree/notebooks")
-    logger.info(f"Local notebook will be synced to: {notebook_dir}")
-    print("Access your notebook at:", sandbox.jupyter_url + '/tree/notebooks')
-    print("A notebook is also created in your outputs directory to view locally.")
+    logger.info(f"📓 [bold cyan]A notebook will be synced to:[/bold cyan] [yellow]{notebook_dir}[/yellow] [dim]for you to follow along[/dim]")
     response = requests.post(
         f"{sandbox.jupyter_url}/api/scribe/start",
         json={"experiment_name": name},

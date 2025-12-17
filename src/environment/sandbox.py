@@ -610,7 +610,8 @@ class Sandbox:
             start_jupyter(self, self.config.jupyter_port)
             self._jupyter_url = self._sandbox.tunnels()[self.config.jupyter_port].url
             wait_for_service(f"{self._jupyter_url}/api/scribe/health")
-            logger.info(f"Jupyter server ready: {self._jupyter_url}/tree/notebooks")
+            logger.info(f"Notebook on gpu: {self._jupyter_url}/tree/notebooks")
+            logger.info("[bold]Important: If accessing notebook directly on the remote gpu via url, you need to refresh to see changes[/bold]")
 
         if self.config.debug:
             logger.info(f"Starting code-server on port {self.config.debug_port}...")

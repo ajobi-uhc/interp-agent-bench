@@ -1,67 +1,113 @@
 # Seer
 
-> [Full documentation for LLM context](llm-context.md)
+### [Markdown docs for LLM](llm-context.md)
 
 ## What is Seer?
+Seer is a small, hackable library for interpretability researchers who want to do research on or with interpretability agents. It adds quality of life improvements and fixes some of the annoying things you get from just using Claude Code out of the box.
 
-Seer is a framework for having agents conduct interpretability work and investigations. The core mechanism involves launching a remote sandbox hosted on a remote GPU or CPU. The agent operates an IPython kernel and notebook on this remote host.
+The core mechanism: you specify an environment (github repos, files, dependencies), Seer launches it as a sandbox on Modal (GPU or CPU), and an agent operates within it via an IPython kernel.
+This setup means you can see what the agent is doing as it runs, it can iteratively fix bugs and adjust its work, and you can spin up many sandboxes in parallel.
 
-## Why use it?
+Seer is designed to be extensible - you can build on top of it to support complex techniques that you might want the agent to use, eg. [giving an agent checkpoint diffing tools](experiments/05-checkpoint-diffing.md) or [building a Petri-style auditing agent with whitebox tools](experiments/06-petri-harness.md).
 
-This approach is valuable because it allows you to see what the agent is doing as it runs, and it can iteratively add things, fix bugs, and adjust its previous work. You can provide tooling to make an environment and any interpretability techniques available as function calls that the agent can use in the notebook as part of writing normal code.
 
 ## When to use Seer
+- **Exploratory investigations**: You have a hypothesis about a model's behavior but want to try many variations quickly without manually rerunning notebooks
+    - Case study: [Hidden Preference](experiments/03-hidden-preference.md) - investigate the model (from Cywinski et al. [link](https://arxiv.org/pdf/2510.01070)) where a model has been finetuned to have a secret preference to think the user it's talking to is a female
+- **Give agents access to your techniques**: Expose methods from your paper to the agent and measure how well they use them across runs
+    - Case study: [Checkpoint Diffing](experiments/05-checkpoint-diffing.md) - agent uses data-centric SAE techniques from [Jiang et al.](https://www.lesswrong.com/posts/a4EDinzAYtRwpNmx9/towards-data-centric-interpretability-with-sparse) to diff Gemini checkpoints
+- **Build on existing papers**: Clone a paper's repo into the environment and the agent can work with it directly - run on new models, modify techniques, or use their tools in a larger investigation
+    - Case study: [Introspection](experiments/04-introspection.md) — replicate the Anthropic introspection [experiment](https://www.anthropic.com/research/introspection) on gemma3 27b (checkout [this](https://github.com/uzaymacar/introspective-awareness) repo for more experiments)
+- **Building better agents**: Test different scaffolding, prompts, or tool access patterns
+    - Case study: [Give an auditing agent whitebox tools](experiments/06-petri-harness.md) — build a minimal & modifiable [Petri](https://github.com/safety-research/petri/tree/main)-style agent with whitebox tools (steering, activation extraction) for finding weird model behaviors
 
-- **Exploratory investigations** where you have a hypothesis but want to try many variations quickly
-- **Scaling up** measuring how well different interp techniques perform through giving agents controlled access to them
-- **Replicating known experiments** on new models — the agent knows the recipe, you just point it at your model
-- **Building and improving existing agents** Using seer to build better investigative agents, building better auditing agents etc.
+## How does Seer compare to Claude Code + a notebook?
+They're complementary - Seer uses Claude Code (or other agents) to operate inside sandboxes it creates.
 
-## Example runs
+Seer handles:
+- Reproducibility: Environments, tools, and prompts defined as code
+- Remote GPUs without setup: Sandboxes on Modal with models, repos, files pre-loaded
+- Flexible tool injection: Expose techniques as tool calls or as libraries in the execution environment
+- Run comparison: Benchmark different approaches across controlled experiments
 
-- [Replicate the key experiment in the Anthropic introspection paper on gemma3 27b](experiments/04-introspection.md)
-- [Investigate a model finetuned with hidden preferences and discover them](experiments/03-hidden-preference.md)
-- [Create a hackable version of Petri for categorizing and finding weird behaviours](experiments/06-petri-harness.md)
-- [Use SAE techniques to diff two Gemini checkpoints and discover behavioral differences](experiments/05-checkpoint-diffing.md)
+
+## Video showing use of Seer for a simple investigation
+[![Seer demo](https://img.youtube.com/vi/k_SuTgUp2fc/maxresdefault.jpg)](https://youtu.be/k_SuTgUp2fc)
+
+## You need modal to get the best out of Seer
+See [here](experiments/00-local-mode.md) to run an experiment locally without Modal
+
+We use modal as the gpu infrastructure provider
+To be able to use Seer sign up for an account on modal and configure a local token (https://modal.com/)
+Once you have signed in and installed the repo - activate the venv and run modal token new (this configures a local token to use)
+
 
 ## Quick Start
 
-### Prerequisites
+Here the goal is to run an investigation on a custom model using predefined techniques as functions
 
-- [Modal](https://modal.com) account (GPU infrastructure)
-- [uv](https://docs.astral.sh/uv/) package manager
+### 0. Get a [modal](https://modal.com/) account
 
-### Setup
+### 1. Setup Environment
 
 ```bash
+# Clone and setup
 git clone https://github.com/ajobi-uhc/seer
 cd seer
 uv sync
+```
+
+### 2. Configure Modal (for GPU access)
+
+```bash
+# Authenticate with Modal
 uv run modal token new
 ```
 
-Create `.env`:
+### 3. Set up API Keys
+
+Create a `.env` file in the project root:
 
 ```bash
+# Required for agent harness
 ANTHROPIC_API_KEY=sk-ant-...
-HF_TOKEN=hf_...  # Optional, for gated models
+
+# Optional - only needed if using HuggingFace gated models
+HF_TOKEN=hf_...
 ```
 
-### Run an experiment
+### 4. Run the hidden preference investigation
 
 ```bash
 cd experiments/hidden-preference-investigation
 uv run python main.py
 ```
 
+### 5. Track progress
+- View the modal app that gets created https://modal.com/apps
+- View the output directory where you ran the command and open the notebook to track progress
+
 **What happens:**
+1. Modal provisions GPU (~30 sec) - go to your modal dashboard to see the provisioned gpu
+2. Downloads models to Modal volume (cached for future runs)
+3. Starts sandbox with specified session type (can be local or notebook)
+4. Agent runs on your local computer and calls mcp tool calls to edit the notebook
+5. Notebook results are continually saved to `./outputs/`
 
-1. Modal provisions GPU (~30 sec)
-2. Downloads models (cached for future runs)
-3. Agent runs the experiment in a notebook
-4. Results saved to `./outputs/`
+**Monitor in Modal:**
+- Dashboard: https://modal.com/dashboard
+- See running sandbox under "Apps"
+- View logs, GPU usage, costs
+- Sandbox auto-terminates when script finishes
 
-**Costs:** A100 ~$1-2/hour. Typical experiments 10-60 minutes.
+**Costs:**
+- A100: ~$1-2/hour on Modal
+- Models download once to Modal volumes (cached)
+- Typical experiments: 10-60 minutes
+
+### 6. Explore more experiments
+
+View some example results notebooks in [example_runs](https://github.com/ajobi-uhc/seer/tree/main/example_runs)
 
 ## Tutorials
 

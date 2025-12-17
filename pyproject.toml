@@ -20,17 +20,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-
-[project.urls]
-Homepage = "https://github.com/ajobi-uhc/seer"
-Documentation = "https://ajobi-uhc.github.io/seer/"
-Repository = "https://github.com/ajobi-uhc/seer"
-Issues = "https://github.com/ajobi-uhc/seer/issues"
 dependencies = [
-    "torch",
     "anthropic>=0.40.0",
     "claude-agent-sdk>=0.1.0",
-    "cloudpickle>=3.0.0",
     "fastmcp>=2.10.6",
     "ipykernel>=6.30.0",
     "jupyter-client>=8.6.3",
@@ -49,6 +41,12 @@ dependencies = [
     "runpod>=1.5.1",
     "matplotlib>=3.10.7"
 ]
+
+[project.urls]
+Homepage = "https://github.com/ajobi-uhc/seer"
+Documentation = "https://ajobi-uhc.github.io/seer/"
+Repository = "https://github.com/ajobi-uhc/seer"
+Issues = "https://github.com/ajobi-uhc/seer/issues"
 
 [project.optional-dependencies]
 web = [

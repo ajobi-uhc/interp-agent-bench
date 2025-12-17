@@ -1,44 +1,40 @@
 # Seer
 
-## [Docs](https://ajobi-uhc.github.io/seer/)
+### [Docs](https://ajobi-uhc.github.io/seer/)  
+### [Markdown docs for LLM](https://raw.githubusercontent.com/ajobi-uhc/seer/main/docs/llm-context.md)
 
 
 ## What is Seer?
-Seer is a framework for having agents conduct interpretability work and investigations. 
-The core mechanism involves launching a remote sandbox hosted on a remote GPU or CPU. The agent operates an IPython kernel and notebook on this remote host.
+Seer is a small, hackable library for interpretability researchers who want to do research on or with interpretability agents. It adds quality of life improvements and fixes some of the annoying things you get from just using Claude Code out of the box.
 
-![Agent running interpretability experiment](docs/demo.gif)
+The core mechanism: you specify an environment (github repos, files, dependencies), Seer launches it as a sandbox on Modal (GPU or CPU), and an agent operates within it via an IPython kernel. 
+This setup means you can see what the agent is doing as it runs, it can iteratively fix bugs and adjust its work, and you can spin up many sandboxes in parallel.
 
-This approach is valuable because it allows you to see what the agent is doing as it runs, and it can iteratively add things, fix bugs, and adjust its previous work. You can provide tooling to make an environment and any interpretability techniques available as function calls that the agent can use in the notebook as part of writing normal code.
+Seer is designed to be extensible - you can build on top of it to support complex techniques that you might want the agent to use, eg. [giving an agent checkpoint diffing tools](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) or [building a Petri-style auditing agent with whitebox tools](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/).
+
 
 ## When to use Seer
 - **Exploratory investigations**: You have a hypothesis about a model's behavior but want to try many variations quickly without manually rerunning notebooks
-- **Benchmarking techniques**: Measure how well different interp methods perform by giving agents controlled access to them and comparing results across runs
-- **Replicating experiments on new models**: The agent knows the recipe (e.g., the Anthropic introspection setup), you just point it at your model
-- **Building better agents**: Use Seer to iterate on investigative or auditing agents themselves - test different scaffolding, prompts, or tool access patterns
+    - Case study: [Hidden Preference](https://ajobi-uhc.github.io/seer/experiments/03-hidden-preference/) - investigate the model (from Cywinski et al. [link](https://arxiv.org/pdf/2510.01070)) where a model has been finetuned to have a secret preference to think the user it's talking to is a female
+- **Give agents access to your techniques**: Expose methods from your paper to the agent and measure how well they use them across runs
+    - Case study: [Checkpoint Diffing](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) - agent uses data-centric SAE techniques from [Jiang et al.](https://www.lesswrong.com/posts/a4EDinzAYtRwpNmx9 towards-data-centric-interpretability-with-sparse) to diff Gemini checkpoints
+- **Build on existing papers**: Clone a paper's repo into the environment and the agent can work with it directly - run on new models, modify techniques, or use their tools in a larger investigation
+    - Case study: [Introspection](https://ajobi-uhc.github.io/seer/experiments/04-introspection/) — replicate the Anthropic introspection [experiment](https://www.anthropic.com/research/introspection) on gemma3 27b (checkout [this](https://github.com/uzaymacar/introspective-awareness) repo for more experiments)
+- **Building better agents**: Test different scaffolding, prompts, or tool access patterns
+    - Case study: [Give an auditing agent whitebox tools](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/) — build a minimal & modifiable [Petri](https://github.com/safety-research/petri/tree/main)-style agent with whitebox tools (steering, activation extraction) for finding weird model behaviors
 
 ## How does Seer compare to Claude Code + a notebook?
-They're complementary - Seer uses claude code as one of the agents that attaches to the created environments.
-Seer aims to be a minimal hackable library that adds value when you want to:
+They're complementary - Seer uses Claude Code (or other agents) to operate inside sandboxes it creates. 
 
-🔬 **Run reproducible experiments** - Define environments, tools, and prompts as code, then iterate on them systematically
+Seer handles:
+- Reproducibility: Environments, tools, and prompts defined as code
+- Remote GPUs without setup: Sandboxes on Modal with models, repos, files pre-loaded
+- Flexible tool injection: Expose techniques as tool calls or as libraries in the execution environment
+- Run comparison: Benchmark different approaches across controlled experiments
 
-🧪 **Test different agent setups** - Easily swap between giving the agent a tool call vs exposing the same function as a callable library in the execution environment
 
-☁️ **Run complex environments on remote gpus** - Spin up sandboxes on Modal with your models, github repos, folders all pre-loaded, without managing infrastructure
-
-📊 **Compare runs** - Benchmark different interpretability techniques or scaffolding approaches across controlled experiments
-
-You can use Seer to set up the sandbox environment, then have Claude Code (or any other agent) operate within it.
-
-## Example runs
-- [Hidden Preference](https://ajobi-uhc.github.io/seer/experiments/03-hidden-preference/) — investigate the model (from Cywinski et al. [link](https://arxiv.org/pdf/2510.01070)) where a model has been finetuned to have a secret preference to think the user it's talking to is a female
-- [Checkpoint Diffing](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) — use data centric SAE techniques from [Jiang et al.](https://www.lesswrong.com/posts/a4EDinzAYtRwpNmx9/towards-data-centric-interpretability-with-sparse) to diff Gemini checkpoints and find behavioral differences
-- [Introspection](https://ajobi-uhc.github.io/seer/experiments/04-introspection/) — replicate the Anthropic introspection [experiment](https://www.anthropic.com/research/introspection) on gemma3 27b (checkout [this](https://github.com/uzaymacar/introspective-awareness) repo for more experiments)
-- [Give an auditing agent whitebox tools](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/) — build a minimal & modifiable [Petri](https://github.com/safety-research/petri/tree/main)-style agent with whitebox tools (steering, activation extraction) for finding weird model behaviors
-
-## Using Seer for a simple investigation
-[![Seer demo](https://img.youtube.com/vi/k_SuTgUp2fc/0.jpg)](https://youtu.be/k_SuTgUp2fc)
+## Video showing me use Seer for a simple investigation
+[![Seer demo](https://img.youtube.com/vi/k_SuTgUp2fc/maxresdefault.jpg)](https://youtu.be/k_SuTgUp2fc)
 
 
 ## You need modal to get the best out of Seer 
@@ -47,6 +43,7 @@ See [here](https://ajobi-uhc.github.io/seer/experiments/00-local-mode) to run an
 We use modal as the gpu infrastructure provider
 To be able to use Seer sign up for an account on modal and configure a local token (https://modal.com/)
 Once you have signed in and installed the repo - activate the venv and run modal token new (this configures a local token to use)
+
 
 ## Quick Start
 
