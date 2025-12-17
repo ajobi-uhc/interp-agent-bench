@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
 import requests
 import shutil
 import logging
@@ -136,7 +135,7 @@ def create_notebook_session(
         sandbox: Sandbox with jupyter running
         workspace: Workspace configuration (optional)
         name: Session name
-        notebook_dir: Base directory for notebook files (timestamped folder will be created inside)
+        notebook_dir: Directory for notebook files
 
     Returns:
         NotebookSession ready for agent execution
@@ -144,16 +143,11 @@ def create_notebook_session(
     if not sandbox.jupyter_url:
         raise RuntimeError("Sandbox needs jupyter. Use execution_mode=ExecutionMode.NOTEBOOK")
 
-    # Create timestamped folder: outputs/experiment_name_timestamp/
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    timestamped_dir = Path(notebook_dir) / f"{name}_{timestamp}"
-    timestamped_dir.mkdir(parents=True, exist_ok=True)
-
     logger.info(f"Creating notebook session: {name}")
     logger.info(f"Notebook URL: {sandbox.jupyter_url}/tree/notebooks")
-    logger.info(f"Local notebook will be synced to: {timestamped_dir}")
+    logger.info(f"Local notebook will be synced to: {notebook_dir}")
     print("Access your notebook at:", sandbox.jupyter_url + '/tree/notebooks')
-    print(f"Local outputs will be saved to: {timestamped_dir}")
+    print("A notebook is also created in your outputs directory to view locally.")
     response = requests.post(
         f"{sandbox.jupyter_url}/api/scribe/start",
         json={"experiment_name": name},
@@ -166,7 +160,7 @@ def create_notebook_session(
         jupyter_url=sandbox.jupyter_url,
         sandbox=sandbox,
         workspace_path=Path("/workspace"),
-        notebook_dir=str(timestamped_dir),
+        notebook_dir=notebook_dir,
     )
     logger.info(f"Session created with ID: {session.session_id}")
 
