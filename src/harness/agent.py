@@ -2,6 +2,7 @@
 
 from typing import Optional, Literal, AsyncIterator
 import asyncio
+from pathlib import Path
 
 from .providers import run_claude, run_openai, run_gemini
 from .logging import run_agent_with_logging
@@ -15,6 +16,35 @@ DEFAULT_MODELS = {
     "gemini": "gemini-3.0-pro",
     "openai": "gpt-5",
 }
+
+
+def _save_prompts(system_prompt: str, user_message: str, mcp_config: dict):
+    """Save system and user prompts to markdown files in the output directory."""
+    try:
+        # Extract output directory from MCP config
+        output_dir = None
+        for server_name, server_config in mcp_config.items():
+            if isinstance(server_config, dict) and "env" in server_config:
+                env = server_config["env"]
+                if isinstance(env, dict) and "NOTEBOOK_OUTPUT_DIR" in env:
+                    output_dir = Path(env["NOTEBOOK_OUTPUT_DIR"])
+                    break
+
+        if not output_dir:
+            return
+
+        # Create directory if needed
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save system prompt
+        (output_dir / "agents_system_prompt.md").write_text(system_prompt)
+
+        # Save user prompt
+        (output_dir / "user_prompt.md").write_text(user_message)
+
+    except Exception as e:
+        # Don't fail the agent run if prompt saving fails
+        print(f"Warning: Failed to save prompts: {e}")
 
 
 async def run_agent(
@@ -63,6 +93,9 @@ async def run_agent(
         ):
             print(msg)
     """
+    # Save prompts to output directory if available
+    _save_prompts(prompt, user_message, mcp_config)
+
     # Use model parameter or default for provider
     model = model or DEFAULT_MODELS[provider]
 

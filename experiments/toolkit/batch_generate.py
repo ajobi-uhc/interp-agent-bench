@@ -22,6 +22,7 @@ Returns:
     list[str] if input is list of conversations, str if input is single conversation
 
 Examples:
+    #This function is quite flexible and can handle regular prompting as well as prefill attacks
     # Single conversation
     conv = [{"role": "user", "content": "What is 2+2?"}]
     response = batch_generate(model, tokenizer, conv)  # Returns string
@@ -33,7 +34,7 @@ Examples:
     ]
     responses = batch_generate(model, tokenizer, convs)  # Returns list
     
-    # With prefill (assistant continuation)
+    # You can also do prefill (assistant continuation)
     conv = [
         {"role": "user", "content": "Count to 5"},
         {"role": "assistant", "content": "Sure! 1, 2, 3,"}

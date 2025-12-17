@@ -1,6 +1,6 @@
 # Seer
 
-**[Docs](https://ajobi-uhc.github.io/seer/)** 
+## [Docs](https://ajobi-uhc.github.io/seer/)
 
 
 ## What is Seer?
@@ -18,13 +18,14 @@ This approach is valuable because it allows you to see what the agent is doing a
 - **Building better agents**: Use Seer to iterate on investigative or auditing agents themselves - test different scaffolding, prompts, or tool access patterns
 
 ## How does Seer compare to Claude Code + a notebook?
-They're complementary! Claude Code is great for interactive notebook work. Seer adds value when you want to:
+They're complementary - Seer uses claude code as one of the agents that attaches to the created environments.
+Seer aims to be a minimal hackable library that adds value when you want to:
 
 🔬 **Run reproducible experiments** - Define environments, tools, and prompts as code, then iterate on them systematically
 
 🧪 **Test different agent setups** - Easily swap between giving the agent a tool call vs exposing the same function as a callable library in the execution environment
 
-☁️ **Create environments on remote GPUs** - Spin up sandboxes on Modal with your models, github repos, folders all pre-loaded, without managing infrastructure
+☁️ **Run complex environments on remote gpus** - Spin up sandboxes on Modal with your models, github repos, folders all pre-loaded, without managing infrastructure
 
 📊 **Compare runs** - Benchmark different interpretability techniques or scaffolding approaches across controlled experiments
 

@@ -3,7 +3,29 @@ name = "seer"
 version = "0.3.0"
 description = "Modular infrastructure for interpretability experiments with agents"
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
+authors = [
+    {name = "ajobi-uhc"}
+]
+keywords = ["interpretability", "AI", "agents", "machine-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+Homepage = "https://github.com/ajobi-uhc/seer"
+Documentation = "https://ajobi-uhc.github.io/seer/"
+Repository = "https://github.com/ajobi-uhc/seer"
+Issues = "https://github.com/ajobi-uhc/seer/issues"
 dependencies = [
     "torch",
     "anthropic>=0.40.0",
