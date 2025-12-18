@@ -1,11 +1,12 @@
 # Seer
+a small hackable library that makes it easier to do interpretability work with agents
 
 ### [Docs](https://ajobi-uhc.github.io/seer/)  
 ### [Markdown docs for LLM](https://raw.githubusercontent.com/ajobi-uhc/seer/main/docs/llm-context.md)
 
 
 ## What is Seer?
-Seer is a small, hackable library for interpretability researchers who want to do research on or with interpretability agents. It adds quality of life improvements and fixes some of the annoying things you get from just using Claude Code out of the box.
+Seer is a library for interpretability researchers who want to do research on or with agents. It makes use cases like creating environments for agents, equipping an agent with your technique and building on papers easier-and fixes some of the annoying things you get from just using Claude Code out of the box.
 
 The core mechanism: you specify an environment (github repos, files, dependencies), Seer launches it as a sandbox on Modal (GPU or CPU), and an agent operates within it via an IPython kernel. 
 This setup means you can see what the agent is doing as it runs, it can iteratively fix bugs and adjust its work, and you can spin up many sandboxes in parallel.
@@ -30,7 +31,7 @@ Seer handles:
 - Reproducibility: Environments, tools, and prompts defined as code
 - Remote GPUs without setup: Sandboxes on Modal with models, repos, files pre-loaded
 - Flexible tool injection: Expose techniques as tool calls or as libraries in the execution environment
-- Run comparison: Benchmark different approaches across controlled experiments
+- Run many experiments in parallel: Since its on a remote sandbox you can launch as many experiments in parallel as you want and benchmark different approaches across runs.
 
 
 ## Video showing me use Seer for a simple investigation
