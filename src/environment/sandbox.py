@@ -400,7 +400,9 @@ class Sandbox:
                 self._sandbox.terminate()
             except (KeyboardInterrupt, Exception) as e:
                 # If termination fails (e.g., due to Ctrl+C), log and continue
-                logger.debug(f"Sandbox termination interrupted: {e}")
+                logger.warning(f"Sandbox termination failed: {e}")
+                logger.warning("⚠️  The Modal container may still be running and consuming GPU resources!")
+                logger.warning("Please terminate the container manually at https://modal.com/apps")
             finally:
                 self._sandbox = None
 
@@ -408,7 +410,7 @@ class Sandbox:
             try:
                 self._image_builder.cleanup()
             except (KeyboardInterrupt, Exception) as e:
-                logger.debug(f"Image builder cleanup interrupted: {e}")
+                logger.warning(f"Image builder cleanup failed: {e}")
 
         return snapshot_image
 

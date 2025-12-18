@@ -68,4 +68,13 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n")
+        print("=" * 80)
+        print("⚠️  INTERRUPTED - IMPORTANT REMINDER")
+        print("=" * 80)
+        print("Please check https://modal.com/apps to ensure your GPU container is stopped!")
+        print("Modal containers may still be running and consuming credits.")
+        print("=" * 80)

@@ -11,14 +11,14 @@ Seer is a library for interpretability researchers who want to do research on or
 The core mechanism: you specify an environment (github repos, files, dependencies), Seer launches it as a sandbox on Modal (GPU or CPU), and an agent operates within it via an IPython kernel. 
 This setup means you can see what the agent is doing as it runs, it can iteratively fix bugs and adjust its work, and you can spin up many sandboxes in parallel.
 
-Seer is designed to be extensible - you can build on top of it to support complex techniques that you might want the agent to use, eg. [giving an agent checkpoint diffing tools](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) or [building a Petri-style auditing agent with whitebox tools](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/).
+Seer is designed to be extensible - you can build on top of it to support complex techniques that you might want the agent to use, eg. [giving an agent SAE tools to diff two Gemini checkpoints](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) or [building a Petri-style auditing agent with whitebox tools](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/).
 
 
 ## When to use Seer
 - **Exploratory investigations**: You have a hypothesis about a model's behavior but want to try many variations quickly without manually rerunning notebooks
     - Case study: [Hidden Preference](https://ajobi-uhc.github.io/seer/experiments/03-hidden-preference/) - investigate the model (from Cywinski et al. [link](https://arxiv.org/pdf/2510.01070)) where a model has been finetuned to have a secret preference to think the user it's talking to is a female
 - **Give agents access to your techniques**: Expose methods from your paper to the agent and measure how well they use them across runs
-    - Case study: [Checkpoint Diffing](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) - agent uses data-centric SAE techniques from [Jiang et al.](https://www.lesswrong.com/posts/a4EDinzAYtRwpNmx9 towards-data-centric-interpretability-with-sparse) to diff Gemini checkpoints
+    - Case study: [Checkpoint Diffing](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) - agent uses data-centric SAE techniques from [Jiang et al.](https://www.lesswrong.com/posts/a4EDinzAYtRwpNmx9 towards-data-centric-interpretability-with-sparse) to diff Gemini 2.0 and Gemini 2.5 checkpoints
 - **Build on existing papers**: Clone a paper's repo into the environment and the agent can work with it directly - run on new models, modify techniques, or use their tools in a larger investigation
     - Case study: [Introspection](https://ajobi-uhc.github.io/seer/experiments/04-introspection/) — replicate the Anthropic introspection [experiment](https://www.anthropic.com/research/introspection) on gemma3 27b (checkout [this](https://github.com/uzaymacar/introspective-awareness) repo for more experiments)
 - **Building better agents**: Test different scaffolding, prompts, or tool access patterns
@@ -28,7 +28,7 @@ Seer is designed to be extensible - you can build on top of it to support comple
 They're complementary - Seer uses Claude Code (or other agents) to operate inside sandboxes it creates. 
 
 Seer handles:
-- Reproducibility: Environments, tools, and prompts defined as code
+- Reproducibility: Complex environments, tools, and prompts defined as code
 - Remote GPUs without setup: Sandboxes on Modal with models, repos, files pre-loaded
 - Flexible tool injection: Expose techniques as tool calls or as libraries in the execution environment
 - Run many experiments in parallel: Since its on a remote sandbox you can launch as many experiments in parallel as you want and benchmark different approaches across runs.
@@ -51,6 +51,8 @@ Once you have signed in and installed the repo - activate the venv and run modal
 Here the goal is to run an investigation on a custom model using predefined techniques as functions
 
 ### 0. Get a [modal](https://modal.com/) account
+Modal has kindly offered to sponsor up to $250 in GPU credits for you to get started!
+Fill in this [form](https://docs.google.com/forms/d/e/1FAIpQLSeueUKsH5kPJtDn5gz1Bm5xFPosx3PjyzC49lfV1o_CUm1UJw/viewform?usp=dialog) to recieve a code
 
 ### 1. Setup Environment
 
@@ -114,3 +116,10 @@ uv run python main.py
 Refer to [docs](https://ajobi-uhc.github.io/seer) to learn how to use the library to define your own experiments.
 
 View some example results notebooks in [example_runs](https://github.com/ajobi-uhc/seer/tree/main/example_runs)
+
+## Acknowledgements
+
+This project builds on excellent work from:
+- [Goodfire](https://goodfire.ai/) for their work on [Scribe](https://github.com/goodfire-ai/scribe), which powers the notebook execution layer
+- [Modal](https://modal.com/) for providing the GPU sandbox infrastructure that makes remote experiments possible
+- The many MATS scholars and friends who helped with feedback
