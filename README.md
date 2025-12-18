@@ -43,7 +43,9 @@ See [here](https://ajobi-uhc.github.io/seer/experiments/00-local-mode) to run an
 
 We use modal as the gpu infrastructure provider
 To be able to use Seer sign up for an account on modal and configure a local token (https://modal.com/)
-Once you have signed in and installed the repo - activate the venv and run modal token new (this configures a local token to use)
+
+Modal has kindly offered to sponsor up to $250 in GPU credits for you to get started!
+Fill in this [form](https://docs.google.com/forms/d/e/1FAIpQLSeueUKsH5kPJtDn5gz1Bm5xFPosx3PjyzC49lfV1o_CUm1UJw/viewform?usp=dialog) to be able to recieve a code
 
 
 ## Quick Start
@@ -51,8 +53,6 @@ Once you have signed in and installed the repo - activate the venv and run modal
 Here the goal is to run an investigation on a custom model using predefined techniques as functions
 
 ### 0. Get a [modal](https://modal.com/) account
-Modal has kindly offered to sponsor up to $250 in GPU credits for you to get started!
-Fill in this [form](https://docs.google.com/forms/d/e/1FAIpQLSeueUKsH5kPJtDn5gz1Bm5xFPosx3PjyzC49lfV1o_CUm1UJw/viewform?usp=dialog) to recieve a code
 
 ### 1. Setup Environment
 
