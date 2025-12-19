@@ -13,7 +13,10 @@ This setup means you can see what the agent is doing as it runs, it can iterativ
 
 Seer is designed to be extensible - you can build on top of it to support complex techniques that you might want the agent to use, eg. [giving an agent SAE tools to diff two Gemini checkpoints](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) or [building a Petri-style auditing agent with whitebox tools](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/).
 
-**Modal is sponsoring $250 in GPU credits for Seer users** — [request your code here](https://docs.google.com/forms/d/e/1FAIpQLSeueUKsH5kPJtDn5gz1Bm5xFPosx3PjyzC49lfV1o_CUm1UJw/viewform?usp=dialog)
+### Modal is sponsoring $250 in GPU credits for Seer users
+Receiving a code might take some time. In the meantime you can [signup to Modal now](https://modal.com/) and use the default $30 in free credits to start playing around with Seer.
+
+#### [Request your code here](https://docs.google.com/forms/d/e/1FAIpQLSeueUKsH5kPJtDn5gz1Bm5xFPosx3PjyzC49lfV1o_CUm1UJw/viewform?usp=dialog)
 
 
 
@@ -58,6 +61,7 @@ To be able to use Seer sign up for an account on modal and configure a local tok
 Here the goal is to run an investigation on a custom model using predefined techniques as functions
 
 ### 0. Get a [modal](https://modal.com/) account
+By default new accounts come with $30 USD in credits
 
 ### 1. Setup Environment
 

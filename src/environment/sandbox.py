@@ -487,7 +487,7 @@ class Sandbox:
             **({"experimental_options": {"enable_docker": True}} if self.config.docker_in_docker else {}),
         }
 
-        logger.info(f"Creating sandbox with GPU: {gpu if gpu else 'None'}, execution mode: {self.config.execution_mode.value}")
+        logger.info(f"Creating sandbox with GPU: {gpu if gpu else 'None'}, execution mode: {self.config.execution_mode.value if self.config.execution_mode else 'None'}")
         self._sandbox = modal.Sandbox.create(**kwargs)
         logger.info(f"Sandbox created (ID: {self._sandbox.object_id})")
 
