@@ -1,8 +1,8 @@
 # Seer
 a small hackable library that makes it easier to do interpretability work with agents
 
-### [Docs](https://ajobi-uhc.github.io/seer/)  
-### [Markdown docs for LLM](https://raw.githubusercontent.com/ajobi-uhc/seer/main/docs/llm-context.md)
+#### [Docs](https://ajobi-uhc.github.io/seer/)  
+#### [Markdown docs for LLM](https://raw.githubusercontent.com/ajobi-uhc/seer/main/docs/llm-context.md)
 
 
 ## What is Seer?
