@@ -130,5 +130,5 @@ View some example results notebooks in [example_runs](https://github.com/ajobi-u
 
 This project builds on excellent work from:
 - [Goodfire](https://goodfire.ai/) for their work on [Scribe](https://github.com/goodfire-ai/scribe), which powers the notebook execution layer
-- [Modal](https://modal.com/) for providing the GPU sandbox infrastructure that makes remote experiments possible
+- [Modal](https://modal.com/) for providing the GPU sandbox infrastructure that makes remote experiments possible - and the credits!
 - The many MATS scholars and friends who helped with feedback
