@@ -1,6 +1,7 @@
 """Volume management for model storage."""
 
 from typing import TYPE_CHECKING
+import hashlib
 
 import modal
 
@@ -19,6 +20,14 @@ def get_or_create_volume(model_name: str) -> tuple[modal.Volume, str]:
         Tuple of (volume, mount_path)
     """
     volume_name = f"model--{model_name.replace('/', '--')}"
+
+    # Modal volume names must be < 64 characters
+    if len(volume_name) > 63:
+        # Truncate and add hash suffix to avoid collisions
+        # Keep first 47 chars + "--" + 8 char hash = 57 chars total
+        name_hash = hashlib.sha256(model_name.encode()).hexdigest()[:8]
+        volume_name = f"{volume_name[:47]}--{name_hash}"
+
     mount_path = f"/models/{model_name.replace('/', '--')}"
 
     volume = modal.Volume.from_name(volume_name, create_if_missing=True)

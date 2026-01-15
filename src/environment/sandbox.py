@@ -42,6 +42,7 @@ class ModelHandle:
     is_peft: bool = False
     base_model: Optional[str] = None
     base_model_path: Optional[str] = None
+    load_as_peft: bool = False
 
 
 @dataclass
@@ -70,12 +71,15 @@ class ModelConfig:
         hidden: Hide model details from agent (default: False)
         is_peft: Model is a PEFT adapter (default: False)
         base_model: Base model ID if this is a PEFT adapter
+        load_as_peft: Load base model as PeftModel with dummy "default" adapter (default: False)
+                      Useful for libraries that expect PeftModel with multiple adapters
     """
     name: str
     var_name: str = "model"
     hidden: bool = False
     is_peft: bool = False
     base_model: Optional[str] = None
+    load_as_peft: bool = False
 
 
 @dataclass
@@ -534,6 +538,7 @@ class Sandbox:
                 is_peft=model_cfg.is_peft,
                 base_model=model_cfg.base_model,
                 base_model_path=base_model_path,
+                load_as_peft=model_cfg.load_as_peft,
             ))
 
     def _setup_repos(self):
