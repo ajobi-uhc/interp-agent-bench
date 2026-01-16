@@ -13,12 +13,6 @@ This setup means you can see what the agent is doing as it runs, it can iterativ
 
 Seer is designed to be extensible - you can build on top of it to support complex techniques that you might want the agent to use, eg. [giving an agent SAE tools to diff two Gemini checkpoints](https://ajobi-uhc.github.io/seer/experiments/05-checkpoint-diffing/) or [building a Petri-style auditing agent with whitebox tools](https://ajobi-uhc.github.io/seer/experiments/06-petri-harness/).
 
-### Modal is sponsoring $250 in GPU credits for Seer users
-Receiving a code might take some time. In the meantime you can [signup to Modal now](https://modal.com/) and use the default $30 in free credits to start playing around with Seer.
-
-#### [Request your code here](https://docs.google.com/forms/d/e/1FAIpQLSeueUKsH5kPJtDn5gz1Bm5xFPosx3PjyzC49lfV1o_CUm1UJw/viewform?usp=dialog)
-
-
 
 ## When to use Seer
 - **Exploratory investigations**: You have a hypothesis about a model's behavior but want to try many variations quickly without manually rerunning notebooks
@@ -45,8 +39,6 @@ Seer handles:
 
 
 ## You need modal to get the best out of Seer 
-Modal has kindly offered to sponsor up to $250 in GPU credits for you to get started!
-Fill in this [form](https://docs.google.com/forms/d/e/1FAIpQLSeueUKsH5kPJtDn5gz1Bm5xFPosx3PjyzC49lfV1o_CUm1UJw/viewform?usp=dialog) to be able to recieve a code
 
 See [here](https://ajobi-uhc.github.io/seer/experiments/00-local-mode) to run an experiment locally without Modal
 
